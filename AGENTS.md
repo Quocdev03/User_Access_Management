@@ -97,6 +97,7 @@
     - Chỉ thay đổi chính xác đoạn code cần thiết. TUYỆT ĐỐI KHÔNG rewrite toàn bộ file nếu chỉ sửa 1 đoạn nhỏ.
     - Giữ nguyên định dạng: Không thay đổi formatting của phần code không đụng tới. Không reorder imports trừ khi bắt buộc.
     - Sau cutover, quét và xóa import, DI wiring, symbol, config/env, Redis key, test, comment và docs legacy trong cùng phase.
+    - Không giữ Markdown cũ dưới dạng redirect stub, `archive/`, `legacy/` hoặc `.bak.md`; sau reconciliation và reference sweep phải xóa file.
 - **Chống Truncate**: Output phải đầy đủ 100%. KHÔNG để lại `...` hoặc `// rest of code`. Code dài phải ghi thẳng vào file, không paste toàn bộ lên chat.
 - **Giao tiếp**: Nói ngắn gọn. Không giải thích code hiển nhiên. Với quyết định kỹ thuật quan trọng, thêm comment ngắn vào code. Khi không chắc chắn về nghiệp vụ/cấu trúc, BẮT BUỘC hỏi lại user trước khi tự quyết định.
 
@@ -123,3 +124,4 @@ Một vertical slice chỉ hoàn thành khi:
 5. Applied migration không bị sửa; backfill/consistency check pass trước contract migration.
 6. Build/test/vet/staticcheck/format/diff-check và test concurrency/failure liên quan đều pass.
 7. Docs theo concern, route mapping và `PROGRESS.md` được cập nhật đúng mức thay đổi.
+8. Legacy Markdown thuộc deletion manifest đã bị xóa; `rg` không còn path cũ và docs inventory chỉ chứa allowlist mới.

@@ -635,11 +635,36 @@ Generated Swagger không sửa tay. `docs/use-cases/README.md` chứa dependency
 
 ### 11.2 Retiring old docs
 
-- Nội dung còn đúng được nhập vào destination mới.
+- Nội dung còn đúng được nhập vào destination mới và ghi vào reconciliation table `old file/section → new owner`.
 - Nội dung current-state và target-state không nằm chung một đoạn không gắn nhãn.
-- File cũ chỉ bị xóa sau reference sweep toàn repo.
-- Spec 2FA được cập nhật thành decision/reference phù hợp canonical model; không để một spec Draft mâu thuẫn master design.
-- Không giữ archive folder trong repo nếu Git history đã đủ.
+- File cũ bị xóa sau khi destination, link và coverage check đã hoàn tất; không giữ redirect stub.
+- Không giữ `archive/`, `legacy/`, `.bak.md` hoặc bản copy lịch sử trong repo; Git history là nơi lưu lịch sử.
+
+Deletion manifest bắt buộc:
+
+| Legacy Markdown | Điều kiện trước khi xóa | Destination |
+| --- | --- | --- |
+| `docs/01-architecture.md` | Module, middleware, state invariant và runtime đã được đối soát | `docs/architecture/*`, `docs/domain/account-state.md` |
+| `docs/02-database-design.md` | Current schema, target schema, Redis keys và migration map đã đầy đủ | `docs/data/*` |
+| `docs/03-use-cases.md` | Đủ mapping 35 operations, semantic IDs và dependency graph | `docs/use-cases/*` |
+| `docs/04-environment-setup.md` | Local/config/deployment/mail instructions đã được verify với executable files | `docs/operations/*` |
+| `docs/superpowers/specs/2026-07-16-2fa-totp-design.md` | MFA decisions đã nhập vào domain/use-case/ADR mới và race GET/DEL đã bị loại | `docs/domain/authentication.md`, `docs/use-cases/mfa.md`, `docs/decisions/*` |
+
+Sau khi kiến trúc mới đã được triển khai và quyết định domain-first được ghi thành ADR, spec hiện tại cũng được retire:
+
+| Transitional Markdown | Xử lý cuối |
+| --- | --- |
+| `docs/superpowers/specs/2026-07-28-domain-first-system-restructure-design.md` | Nhập quyết định còn hiệu lực vào `docs/decisions/` và các source theo concern, rồi xóa |
+
+Final docs tree không chứa `docs/superpowers/`. Không có hai file Markdown cùng sở hữu một rule.
+
+Deletion gate:
+
+1. Reconciliation table không còn section chưa có destination.
+2. Route/use-case coverage vẫn là 35/35 và MFA additions có owner.
+3. `rg` toàn repo không còn reference tới legacy path.
+4. Markdown inventory chỉ chứa allowlist của docs tree mới.
+5. `git diff --name-status` thể hiện legacy files bị xóa, không phải giữ lại với banner “deprecated”.
 
 ---
 
@@ -661,6 +686,7 @@ Không hoàn thành phase nếu:
 - Redis key/config/comment cũ còn reference không có owner.
 - Migration/schema mới tồn tại nhưng read/write path vẫn dùng nguồn cũ.
 - Net production code tăng vì giữ implementation cũ thay vì thay thế.
+- Legacy Markdown còn tồn tại dưới dạng stub/archive/copy sau khi destination đã hoàn tất.
 
 Shim tạm chỉ được phép khi rollout nhiều phiên bản bắt buộc, phải có owner, expiry và deletion task trong cùng phase hoặc phase contract ngay sau đó.
 
@@ -744,6 +770,7 @@ Shim tạm chỉ được phép khi rollout nhiều phiên bản bắt buộc, p
 - Redis không còn global revoke epoch hoặc email-change business state.
 - API server không tự migrate, chạy cleanup hoặc giữ local production file.
 - Mỗi vertical slice xóa legacy path trước khi hoàn thành.
+- Legacy Markdown trong deletion manifest bị xóa; final `docs/` không chứa stub/archive hoặc `superpowers/`.
 - Applied migrations không bị sửa; dữ liệu production được backfill/verify trước contract.
 - `AGENTS.md` không còn ép code mới vào global service/repository layout.
 - Master implementation plan được viết lại từ spec này sau user review.
