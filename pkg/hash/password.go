@@ -5,7 +5,6 @@ import (
 	"crypto/sha256"
 	"encoding/hex"
 	"errors"
-	"math/big"
 	"strings"
 
 	"golang.org/x/crypto/bcrypt"
@@ -19,8 +18,6 @@ const (
 	numberChars  = "0123456789"
 	specialChars = "!@#$%^&*()-_=+[]{}<>?"
 )
-
-const allChars = lowerChars + upperChars + numberChars + specialChars
 
 // DummyPasswordHash is a real bcrypt hash of "dummy-password" for timing equalization
 // when a user/email does not exist (must be a valid bcrypt string).
@@ -97,66 +94,10 @@ func ValidateNewPassword(password string) error {
 	return nil
 }
 
-func GenerateTempPassword(length int, oldHash string) (string, error) {
-	if length < minPasswordLength {
-		length = minPasswordLength
+func GenerateResetToken() (string, error) {
+	value := make([]byte, 32)
+	if _, err := rand.Read(value); err != nil {
+		return "", err
 	}
-
-	for {
-		password := make([]byte, 0, length)
-
-		for _, chars := range []string{
-			lowerChars,
-			upperChars,
-			numberChars,
-			specialChars,
-		} {
-			c, err := randomChar(chars)
-			if err != nil {
-				return "", err
-			}
-			password = append(password, c)
-		}
-
-		for len(password) < length {
-			c, err := randomChar(allChars)
-			if err != nil {
-				return "", err
-			}
-			password = append(password, c)
-		}
-
-		if err := shuffle(password); err != nil {
-			return "", err
-		}
-
-		if oldHash != "" && CheckPassword(string(password), oldHash) {
-			continue
-		}
-
-		return string(password), nil
-	}
-}
-
-func randomChar(chars string) (byte, error) {
-	n, err := rand.Int(rand.Reader, big.NewInt(int64(len(chars))))
-	if err != nil {
-		return 0, err
-	}
-
-	return chars[n.Int64()], nil
-}
-
-func shuffle(data []byte) error {
-	for i := len(data) - 1; i > 0; i-- {
-		n, err := rand.Int(rand.Reader, big.NewInt(int64(i+1)))
-		if err != nil {
-			return err
-		}
-
-		j := int(n.Int64())
-		data[i], data[j] = data[j], data[i]
-	}
-
-	return nil
+	return hex.EncodeToString(value), nil
 }

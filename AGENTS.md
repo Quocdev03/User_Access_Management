@@ -6,25 +6,24 @@
 
 - **Đọc Skills (Bước 0)**: Đọc danh sách các `SKILL.md` trước. Chỉ dùng tool `view_file` đọc nội dung các skill thực sự liên quan đến task hiện tại. Chỉ đọc toàn bộ skills khi user yêu cầu audit hoặc thay đổi ảnh hưởng toàn project.
 - **Đọc Docs (theo task)**:
-    - Thiết kế đích đã duyệt: `docs/superpowers/specs/2026-07-28-domain-first-system-restructure-design.md`.
-    - Trong giai đoạn chuyển đổi, `docs/01`…`04` mô tả **as-is**; không dùng chúng để phủ định thiết kế đích.
-    - Sau docs cutover, đọc `docs/README.md` để tìm source of truth theo concern:
+    - Đọc `docs/README.md` để tìm source of truth theo concern:
         - `docs/architecture/`: module, dependency, runtime topology.
         - `docs/domain/`: state invariant và business policy.
-        - `docs/data/`: current/target schema, Redis keys, migration.
+        - `docs/data/`: current schema, schema design, Redis keys, migration.
         - `docs/use-cases/`: semantic use-case graph và public behavior.
         - `docs/operations/`: config, local, deployment, observability.
         - `docs/decisions/`: quyết định kiến trúc còn hiệu lực.
-    - Swagger generated hiện ở `docs/docs.go`, `docs/swagger.*`; sau cutover ở `docs/openapi/`. **Không sửa tay**, regenerate bằng `swag`.
+    - Swagger generated ở `docs/openapi/`. **Không sửa tay**, regenerate bằng `swag`.
     - Quy tắc code/AI workflow: file này (`AGENTS.md`).
 
 ## 2. QUY TRÌNH IMPLEMENT (WORKFLOW)
 
 1. **Lên Plan**: Nếu task > 1 file hoặc tính năng mới, tạo outline ngắn (semantic Use Case, file cần sửa/xóa, migration, code tái sử dụng) và đợi user duyệt. Task nhỏ/fix bug thì làm luôn.
 2. **Scan Codebase**: Trước khi tạo hoặc xóa file, ưu tiên search/symbol tool của IDE; dùng `rg` khi không có tool phù hợp:
-    - Target HTTP: `internal/httpapi/`; legacy: `internal/handler/`, `internal/router/`.
-    - Target domain: `internal/auth/`, `account/`, `session/`, `access/`, `accountstate/`; legacy: `internal/service/`.
-    - Target adapters: `internal/mysqlstore/`, `redisstore/`, `mail/`, `blob/`, `jobs/`; legacy: `internal/repository/`, `worker/`.
+    - HTTP owner: `internal/httpapi/`; các package HTTP global cũ đã bị xóa và không được tái tạo.
+    - Domain owners: `internal/auth/`, `account/`, `session/`, `access/`, `accountstate/`.
+    - Adapters: `internal/mysqlstore/`, `redisstore/`, `mail/`, `blob/`, `jobs/`.
+    - Các package global đã xóa (`handler`, `router`, `middleware`, `dto`, `service`, `repository`, `worker`, `model`, `constant`) không được tái tạo.
     - Tìm theo semantic use-case ID, route, symbol, table/column, Redis key, env key, test và docs reference.
     - Trước khi xóa, BẮT BUỘC quét toàn repo và lập replacement ledger; không chỉ kiểm tra import Go.
 3. **Verification**:
@@ -63,12 +62,12 @@
        _(Dùng Token Bucket. Chỉ tính rate limit/failed attempt nếu format hợp lệ)._
 - **Security**: Mọi Middleware bảo mật (Auth, Rate limit) phải Fail-Closed (trả về 503 nếu service phụ trợ như Redis sập).
 - **State đồng bộ (account/session)** — BẮT BUỘC khi đụng user/auth:
-    - Target source: `internal/accountstate/` + `docs/domain/account-state.md`. Trước khi slice này cutover, đọc thêm legacy `internal/service/account_state.go`.
+    - Source duy nhất của state policy: `internal/accountstate/` + `docs/domain/account-state.md`. Không tái tạo state/profile mirror đã bị contract migration loại bỏ.
     - Không ghi raw lifecycle/admin-lock/login-lock/password-required field ngoài `accountstate` transition.
     - Đổi password/email/role/account state/MFA → tăng `auth_version` và xóa sessions trong cùng MySQL transaction.
     - Global revoke không phụ thuộc Redis. Logout/revoke một session vẫn blacklist JTI fail-closed.
     - Redis chỉ giữ TTL state: rate/ban/JTI/refresh-reuse/MFA/worker lease; không thêm global revoke hoặc email-change business state mới.
-    - Không thêm `safeGo`/`go` trần cho mail. Target là durable outbox + bounded worker; legacy mail path chỉ được giữ tới phase cutover.
+    - Không thêm `safeGo`/`go` trần cho mail. Mail bắt buộc đi qua durable outbox + bounded worker.
     - UC mới/cập nhật phải ghi dependency, transaction, state/session effect, concurrency và failure behavior trong `docs/use-cases/`.
 
 ## 4. DATABASE & TRANSACTION
@@ -93,7 +92,7 @@
 - **Sửa Code (Targeted Edits & Scope Control)**:
     - **Scope Control**: Chỉ sửa những file bắt buộc cho task. Tuyệt đối không "tiện tay" refactor, rename, move, reformat hoặc đụng chạm tới file/code không liên quan (No opportunistic refactoring).
     - Với vertical refactor đã duyệt, được move/tách/xóa file trong đúng slice; phải xóa legacy counterpart thay vì giữ cả hai.
-    - Không tạo file mới chỉ để bọc/forward sang implementation cũ. Tạo package/file mới khi nó là target owner rõ ràng của domain/use case.
+    - Không tạo file mới chỉ để bọc/forward sang implementation cũ. Tạo package/file mới khi nó là owner rõ ràng của domain/use case.
     - Chỉ thay đổi chính xác đoạn code cần thiết. TUYỆT ĐỐI KHÔNG rewrite toàn bộ file nếu chỉ sửa 1 đoạn nhỏ.
     - Giữ nguyên định dạng: Không thay đổi formatting của phần code không đụng tới. Không reorder imports trừ khi bắt buộc.
     - Sau cutover, quét và xóa import, DI wiring, symbol, config/env, Redis key, test, comment và docs legacy trong cùng phase.

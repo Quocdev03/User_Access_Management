@@ -8,7 +8,10 @@ if "%~1"=="" goto help
 if /I "%~1"=="help" goto help
 if /I "%~1"=="dev" goto dev
 if /I "%~1"=="run" goto run
+if /I "%~1"=="worker" goto worker
 if /I "%~1"=="build" goto build
+if /I "%~1"=="migrate" goto migrate
+if /I "%~1"=="avatar-migrate" goto avatar_migrate
 if /I "%~1"=="migrate-up" goto migrate_up
 if /I "%~1"=="migrate-down" goto migrate_down
 if /I "%~1"=="migrate-create" goto migrate_create
@@ -28,11 +31,14 @@ echo.
 echo Commands:
 echo   dev              Run air (hot reload)
 echo   run              Run server
-echo   build            Build server (CGO_ENABLED=0)
+echo   worker           Run cleanup/outbox worker
+echo   build            Build server, worker and migrate (CGO_ENABLED=0)
+echo   migrate          Apply migrations through cmd/migrate
+echo   avatar-migrate   Copy/checksum local avatars into S3
 echo   migrate-up       Run migrations up
 echo   migrate-down     Run migrations down
 echo   migrate-create   Create migration (make.cmd migrate-create create_xxx_table)
-echo   swagger          Generate docs/docs.go + swagger.json/yaml
+echo   swagger          Generate docs/openapi/docs.go + swagger.json/yaml
 echo   swagger-install  Install swag CLI via go install
 echo   test             Run tests
 echo   test-coverage    Run tests with coverage HTML
@@ -45,13 +51,31 @@ air
 goto end
 
 :run
-go run cmd\server\main.go
+go run .\cmd\server
+goto end
+
+:worker
+go run .\cmd\worker
 goto end
 
 :build
 set CGO_ENABLED=0
 if not exist bin mkdir bin
 go build -o bin\server.exe .\cmd\server
+if errorlevel 1 exit /b 1
+go build -o bin\worker.exe .\cmd\worker
+if errorlevel 1 exit /b 1
+go build -o bin\migrate.exe .\cmd\migrate
+if errorlevel 1 exit /b 1
+go build -o bin\avatar-migrate.exe .\cmd\avatar-migrate
+goto end
+
+:migrate
+go run .\cmd\migrate
+goto end
+
+:avatar_migrate
+go run .\cmd\avatar-migrate
 goto end
 
 :migrate_up
@@ -94,9 +118,9 @@ if errorlevel 1 (
     echo swag not found. Run: make.cmd swagger-install
     exit /b 1
 )
-"%SWAG_CMD%" init -g cmd\server\main.go -o docs --parseDependency --parseInternal
+"%SWAG_CMD%" init -g cmd\server\main.go -o docs\openapi --parseDependency --parseInternal --parseGoList=false
 if errorlevel 1 exit /b 1
-echo Swagger generated: docs\docs.go, docs\swagger.json, docs\swagger.yaml
+echo Swagger generated: docs\openapi\docs.go, docs\openapi\swagger.json, docs\openapi\swagger.yaml
 goto end
 
 :swagger_install

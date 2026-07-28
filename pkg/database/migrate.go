@@ -4,70 +4,77 @@ import (
 	"database/sql"
 	"errors"
 	"fmt"
-	"time"
 
-	"github.com/go-sql-driver/mysql"
 	"github.com/golang-migrate/migrate/v4"
 	migrate_mysql "github.com/golang-migrate/migrate/v4/database/mysql"
 	_ "github.com/golang-migrate/migrate/v4/source/file"
 	"github.com/quocdev03/user-access-management/internal/config"
 )
 
-// RunMigrations thực thi các script migration (.sql) để cập nhật schema cơ sở dữ liệu
-func RunMigrations(cfg config.DatabaseConfig, migrationsPath string) error {
-	// Tạo cấu hình DSN riêng cho migration với MultiStatements = true
-	mysqlCfg := mysql.Config{
-		User:                 cfg.User,
-		Passwd:               cfg.Password,
-		Net:                  "tcp",
-		Addr:                 fmt.Sprintf("%s:%s", cfg.Host, cfg.Port),
-		DBName:               cfg.Name,
-		Collation:            "utf8mb4_unicode_ci",
-		ParseTime:            true,
-		Loc:                  time.UTC,
-		Timeout:              10 * time.Second,
-		AllowNativePasswords: true,
-		MultiStatements:      true, // Cần thiết để thực thi các script chứa nhiều câu lệnh SQL ngăn cách bởi dấu chấm phẩy
+func RunMigrations(
+	cfg config.DatabaseConfig,
+	migrationsPath string,
+	appEnv string,
+) (resultErr error) {
+	mysqlCfg, err := newMySQLConfig(cfg, true)
+	if err != nil {
+		return err
 	}
-
-	if cfg.Host != "localhost" && cfg.Host != "mysql" {
-		mysqlCfg.TLSConfig = "skip-verify"
-	}
-
-	dsn := mysqlCfg.FormatDSN()
-	db, err := sql.Open("mysql", dsn)
+	db, err := sql.Open("mysql", mysqlCfg.FormatDSN())
 	if err != nil {
 		return fmt.Errorf("không thể kết nối database cho migration: %w", err)
 	}
-	defer db.Close()
 
 	driver, err := migrate_mysql.WithInstance(db, &migrate_mysql.Config{})
 	if err != nil {
-		return fmt.Errorf("không thể khởi tạo migration driver: %w", err)
+		resultErr := fmt.Errorf("không thể khởi tạo migration driver: %w", err)
+		if closeErr := db.Close(); closeErr != nil {
+			resultErr = errors.Join(
+				resultErr,
+				fmt.Errorf("close migration database: %w", closeErr),
+			)
+		}
+		return resultErr
 	}
-
-	m, err := migrate.NewWithDatabaseInstance(
-		"file://"+migrationsPath,
-		"mysql",
-		driver,
-	)
+	m, err := migrate.NewWithDatabaseInstance("file://"+migrationsPath, "mysql", driver)
 	if err != nil {
-		return fmt.Errorf("không thể khởi tạo migrate instance: %w", err)
+		resultErr := fmt.Errorf("không thể khởi tạo migrate instance: %w", err)
+		if closeErr := db.Close(); closeErr != nil {
+			resultErr = errors.Join(
+				resultErr,
+				fmt.Errorf("close migration database: %w", closeErr),
+			)
+		}
+		return resultErr
 	}
+	defer func() {
+		sourceErr, databaseErr := m.Close()
+		if sourceErr != nil {
+			resultErr = errors.Join(resultErr, fmt.Errorf("close migration source: %w", sourceErr))
+		}
+		if databaseErr != nil {
+			resultErr = errors.Join(
+				resultErr,
+				fmt.Errorf("close migration driver: %w", databaseErr),
+			)
+		}
+	}()
 
-	// Cơ chế tự động Auto-Heal (cứu hộ tự động) không code cứng version:
-	// Đọc phiên bản hiện tại, nếu phát hiện database đang bị "Dirty" (kẹt do lỗi đứt ngang),
-	// thì tự động Force lùi về 1 phiên bản trước đó để chạy lại từ đầu file bị lỗi.
 	version, dirty, err := m.Version()
 	if err == nil && dirty {
+		if appEnv == "production" {
+			return fmt.Errorf(
+				"database migration dirty ở version %d; production yêu cầu xử lý thủ công",
+				version,
+			)
+		}
 		if forceErr := m.Force(int(version) - 1); forceErr != nil {
-			return fmt.Errorf("lỗi khi tự động force dirty database: %w", forceErr)
+			return fmt.Errorf("tự động force dirty database: %w", forceErr)
 		}
 	}
 
 	if err := m.Up(); err != nil && !errors.Is(err, migrate.ErrNoChange) {
-		return fmt.Errorf("lỗi khi chạy migration: %w", err)
+		return fmt.Errorf("chạy migration: %w", err)
 	}
-
 	return nil
 }

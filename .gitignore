@@ -30,9 +30,8 @@ go.work.sum
 uam-api.env
 *.render.env
 # Committed templates only:
-#   .env.example              → docker compose local
-#   .env.local.example        → app on host + localhost ports
-#   .env.production.example   → Render + Aiven + Resend (placeholders)
+#   .env.example              → app on host + Compose-published local ports
+#   .env.production.example   → production placeholders only
 
 # Credentials / secrets files (never commit)
 *credentials*.txt
@@ -56,4 +55,3 @@ uploads/
 .agents/skills-lock.json
 brain/
 scratch/
-

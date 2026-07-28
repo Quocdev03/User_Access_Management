@@ -1432,8 +1432,7 @@
                                 <h4
                                     class="text-xs font-semibold text-[var(--text-secondary)]"
                                 >
-                                    Base Account: admin@localhost.local -
-                                    LocalDev@ChangeMe1
+                                    No default account. Use cmd/bootstrap-admin.
                                 </h4>
                                 <div class="space-y-2">
                                     <div class="flex items-center gap-2">
@@ -3771,7 +3770,6 @@ Send a request to see the response content here.</pre
             }
 
             function showResponse(id, data, isSuccess) {
-                // Update local output element (hidden inside central panel, but kept for compatibility)
                 const el = document.getElementById("res-" + id);
                 if (el) {
                     el.style.display = "block";
@@ -3779,7 +3777,6 @@ Send a request to see the response content here.</pre
                     el.textContent = JSON.stringify(data, null, 2);
                 }
 
-                // Update right side global panel
                 const viewer = document.getElementById(
                     "global-response-viewer",
                 );

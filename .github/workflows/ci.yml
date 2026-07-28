@@ -1,88 +1,259 @@
-name: Go CI/CD Pipeline
+name: Go CI
 
 on:
   push:
-    branches: [ "main" ]
+    branches: [main]
   pull_request:
-    branches: [ "main" ]
+    branches: [main]
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
 
 jobs:
-  build-and-test:
-    name: Build and Test
+  quality:
+    name: Quality
     runs-on: ubuntu-latest
-
+    timeout-minutes: 20
     steps:
-      - name: Checkout code
+      - name: Checkout
         uses: actions/checkout@v4
 
       - name: Set up Go
         uses: actions/setup-go@v5
         with:
-          go-version: '1.26.2'
+          go-version-file: go.mod
           cache: true
 
-      - name: Install dependencies
-        run: go mod download
+      - name: Download and verify modules
+        run: |
+          go mod download
+          go mod verify
 
-      - name: Run Go Vet
+      - name: Check formatting and diff whitespace
+        run: |
+          unformatted="$(gofmt -l .)"
+          if [ -n "$unformatted" ]; then
+            printf '%s\n' "$unformatted"
+            exit 1
+          fi
+          git diff --check
+
+      - name: Vet
         run: go vet ./...
 
-      - name: Run Tests
-        run: go test -v ./...
+      - name: Staticcheck
+        run: |
+          go install honnef.co/go/tools/cmd/staticcheck@v0.7.0
+          staticcheck ./...
 
-      - name: Build Application
-        run: go build -v -o server ./cmd/server/main.go
+      - name: Unit and contract tests
+        run: go test -count=1 ./...
 
-  deploy:
-    name: Trigger Render Deploy
-    needs: build-and-test
+      - name: Build all commands
+        run: go build ./...
+
+  race:
+    name: Race detector
     runs-on: ubuntu-latest
-    if: github.ref == 'refs/heads/main' && github.event_name == 'push'
-    permissions:
-      deployments: write
-      contents: read
-    env:
-      RENDER_DEPLOY_HOOK_URL: ${{ secrets.RENDER_DEPLOY_HOOK_URL }}
-
+    timeout-minutes: 20
     steps:
-      - name: Create GitHub Deployment
-        id: deployment
-        if: env.RENDER_DEPLOY_HOOK_URL != ''
-        uses: chrnorm/deployment-action@v2
-        with:
-          token: '${{ github.token }}'
-          environment-url: https://chiquocdev.me
-          environment: production
-          initial-status: in_progress
+      - name: Checkout
+        uses: actions/checkout@v4
 
-      - name: Trigger Render Deploy Webhook
-        if: env.RENDER_DEPLOY_HOOK_URL != ''
+      - name: Set up Go
+        uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+          cache: true
+
+      - name: Run race detector
+        run: go test -race -count=1 ./...
+
+  integration:
+    name: MySQL and Redis integration
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    services:
+      mysql:
+        image: mysql:8
+        env:
+          MYSQL_ROOT_PASSWORD: root_password
+        ports:
+          - 3306:3306
+        options: >-
+          --health-cmd "mysqladmin ping -h 127.0.0.1 -proot_password"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 20
+      redis:
+        image: redis:alpine
+        ports:
+          - 6379:6379
+        options: >-
+          --health-cmd "redis-cli ping"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 20
+    env:
+      APP_ENV: test
+      APP_PORT: "8080"
+      APP_FRONTEND_URL: http://localhost:3000
+      DB_HOST: 127.0.0.1
+      DB_PORT: "3306"
+      DB_USER: uam_test
+      DB_PASSWORD: uam_test_password
+      DB_TLS_MODE: disable
+      REDIS_HOST: 127.0.0.1
+      REDIS_PORT: "6379"
+      JWT_SECRET: ci-only-jwt-secret
+      JWT_ACCESS_EXPIRY: 15m
+      JWT_REFRESH_EXPIRY: 168h
+      OTP_PEPPER: ci-only-otp-pepper
+      MFA_ISSUER: UAM CI
+      MFA_ACTIVE_KEY_VERSION: v1
+      MFA_ENCRYPTION_KEYS: v1:ZGV2LW9ubHktbWZhLWtleS0zMi1ieXRlcy0wMDAwMDA=
+      BLOB_PROVIDER: local
+      BLOB_LOCAL_ROOT: ./uploads
+      UAM_MIGRATION_TEST_DB_USER: uam_test
+      UAM_MIGRATION_TEST_DB_PASSWORD: uam_test_password
+      UAM_MIGRATION_TEST_DB_ADDR: 127.0.0.1:3306
+      UAM_AUTH_TEST_DB_NAME: uam_auth_test_ci
+      UAM_AUTH_TEST_DB_ADDR: 127.0.0.1:3306
+      UAM_AUTH_TEST_DB_USER: uam_test
+      UAM_AUTH_TEST_DB_PASSWORD: uam_test_password
+      UAM_AUTH_TEST_REDIS_ADDR: 127.0.0.1:6379
+      UAM_ACCOUNT_TEST_DB_NAME: uam_account_test_ci
+      UAM_ACCOUNT_TEST_DB_ADDR: 127.0.0.1:3306
+      UAM_ACCOUNT_TEST_DB_USER: uam_test
+      UAM_ACCOUNT_TEST_DB_PASSWORD: uam_test_password
+      UAM_ACCESS_TEST_DB_HOST: 127.0.0.1
+      UAM_ACCESS_TEST_DB_PORT: "3306"
+      UAM_ACCESS_TEST_DB_NAME: uam_access_test_ci
+      UAM_ACCESS_TEST_DB_USER: uam_test
+      UAM_ACCESS_TEST_DB_PASSWORD: uam_test_password
+      UAM_JOBS_TEST_DB_NAME: uam_jobs_test_ci
+      UAM_JOBS_TEST_DB_ADDR: 127.0.0.1:3306
+      UAM_JOBS_TEST_DB_USER: uam_test
+      UAM_JOBS_TEST_DB_PASSWORD: uam_test_password
+      UAM_STORE_TEST_DB_NAME: uam_store_test_ci
+      UAM_STORE_TEST_DB_ADDR: 127.0.0.1:3306
+      UAM_STORE_TEST_DB_USER: uam_test
+      UAM_STORE_TEST_DB_PASSWORD: uam_test_password
+      UAM_REDIS_TEST_ADDR: 127.0.0.1:6379
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Go
+        uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+          cache: true
+
+      - name: Install MySQL client
         run: |
-          curl -f -X POST "${{ env.RENDER_DEPLOY_HOOK_URL }}"
+          sudo apt-get update
+          sudo apt-get install --yes default-mysql-client
 
-      - name: Update deployment status to Success
-        if: "${{ success() && steps.deployment.outputs.deployment_id != '' }}"
-        uses: chrnorm/deployment-action@v2
-        with:
-          type: update
-          token: '${{ github.token }}'
-          deployment-id: ${{ steps.deployment.outputs.deployment_id }}
-          state: 'success'
-          environment-url: https://chiquocdev.me
-          environment: production
-
-      - name: Update deployment status to Failure
-        if: "${{ failure() && steps.deployment.outputs.deployment_id != '' }}"
-        uses: chrnorm/deployment-action@v2
-        with:
-          type: update
-          token: '${{ github.token }}'
-          deployment-id: ${{ steps.deployment.outputs.deployment_id }}
-          state: 'failure'
-          environment: production
-
-      - name: Skip deploy info
-        if: env.RENDER_DEPLOY_HOOK_URL == ''
+      - name: Create integration user
         run: |
-          echo "RENDER_DEPLOY_HOOK_URL secret is not set, skipping deployment."
-          echo "Please set RENDER_DEPLOY_HOOK_URL in your GitHub repository secrets if you want to trigger Render deploys and register them in GitHub Deployments."
+          mysql --protocol=tcp -h 127.0.0.1 -uroot -proot_password <<'SQL'
+          CREATE USER IF NOT EXISTS 'uam_test'@'%' IDENTIFIED BY 'uam_test_password';
+          SQL
+
+      - name: Test migration history and contract
+        shell: bash
+        run: |
+          set -euo pipefail
+          reset_db() {
+            local name="$1"
+            mysql --protocol=tcp -h 127.0.0.1 -uroot -proot_password <<SQL
+          DROP DATABASE IF EXISTS \`$name\`;
+          CREATE DATABASE \`$name\` CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci;
+          GRANT ALL PRIVILEGES ON \`$name\`.* TO 'uam_test'@'%';
+          SQL
+          }
+
+          reset_db uam_bootstrap_migration_test_ci
+          UAM_BOOTSTRAP_MIGRATION_DB_NAME=uam_bootstrap_migration_test_ci \
+            go test -tags=integration -count=1 ./pkg/database \
+              -run '^TestNeutralizeKnownBootstrapAdminMigration$'
+
+          for test_name in \
+            TestCanonicalSchemaEmptyDatabaseMigration \
+            TestCanonicalSchemaCurrentDataMigration \
+            TestCanonicalSchemaDuplicatePermissionMigrationStops
+          do
+            reset_db uam_canonical_migration_test_ci
+            UAM_CANONICAL_MIGRATION_DB_NAME=uam_canonical_migration_test_ci \
+              go test -tags=integration -count=1 ./pkg/database \
+                -run "^${test_name}$"
+          done
+
+          reset_db uam_mfa_migration_test_ci_current
+          reset_db uam_mfa_migration_test_ci_empty
+          UAM_MFA_MIGRATION_CURRENT_DB_NAME=uam_mfa_migration_test_ci_current \
+          UAM_MFA_MIGRATION_EMPTY_DB_NAME=uam_mfa_migration_test_ci_empty \
+            go test -tags=integration -count=1 ./pkg/database \
+              -run '^TestMFAMigration'
+
+          reset_db uam_contract_migration_test_ci_current
+          reset_db uam_contract_migration_test_ci_empty
+          UAM_CONTRACT_MIGRATION_CURRENT_DB_NAME=uam_contract_migration_test_ci_current \
+          UAM_CONTRACT_MIGRATION_EMPTY_DB_NAME=uam_contract_migration_test_ci_empty \
+            go test -tags=integration -count=1 ./pkg/database \
+              -run '^TestContractMigration'
+
+      - name: Prepare domain schemas
+        shell: bash
+        run: |
+          set -euo pipefail
+          for name in \
+            uam_auth_test_ci \
+            uam_account_test_ci \
+            uam_access_test_ci \
+            uam_jobs_test_ci \
+            uam_store_test_ci
+          do
+            mysql --protocol=tcp -h 127.0.0.1 -uroot -proot_password <<SQL
+          DROP DATABASE IF EXISTS \`$name\`;
+          CREATE DATABASE \`$name\` CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci;
+          GRANT ALL PRIVILEGES ON \`$name\`.* TO 'uam_test'@'%';
+          SQL
+            DB_NAME="$name" go run ./cmd/migrate
+          done
+
+      - name: Run domain and adapter integration tests
+        run: >-
+          go test -tags=integration -count=1 -p=1
+          ./internal/auth
+          ./internal/account
+          ./internal/access
+          ./internal/jobs
+          ./internal/mysqlstore
+          ./internal/redisstore
+
+  image:
+    name: Container build and scan
+    needs: [quality, race, integration]
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Build image
+        run: docker build --tag uam:${{ github.sha }} .
+
+      - name: Scan image
+        uses: aquasecurity/trivy-action@ed142fd0673e97e23eac54620cfb913e5ce36c25 # v0.36.0
+        with:
+          image-ref: uam:${{ github.sha }}
+          format: table
+          severity: HIGH,CRITICAL
+          ignore-unfixed: true
+          exit-code: "1"

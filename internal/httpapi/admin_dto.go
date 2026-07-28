@@ -1,0 +1,99 @@
+package httpapi
+
+import "time"
+
+type AdminListUsersRequest struct {
+	Username  string `form:"username"`
+	Email     string `form:"email"`
+	Status    string `form:"status"`
+	Role      string `form:"role"`
+	SortBy    string `form:"sort_by"`
+	SortOrder string `form:"sort_order"`
+	Page      int    `form:"page,default=1"`
+	PerPage   int    `form:"per_page,default=20"`
+}
+
+type AdminUserListItem struct {
+	ID            uint64   `json:"id"`
+	Username      string   `json:"username"`
+	Email         string   `json:"email"`
+	FullName      string   `json:"full_name"`
+	Phone         string   `json:"phone"`
+	Status        string   `json:"status"`
+	EmailVerified bool     `json:"email_verified"`
+	DateOfBirth   string   `json:"date_of_birth"`
+	AvatarURL     *string  `json:"avatar_url,omitempty"`
+	Roles         []string `json:"roles"`
+	CreatedAt     string   `json:"created_at"`
+}
+
+type AdminListUsersResponse struct {
+	Users []AdminUserListItem `json:"users"`
+	Meta  PaginationMeta      `json:"meta"`
+}
+
+type PaginationMeta struct {
+	Page       int   `json:"page"`
+	PerPage    int   `json:"per_page"`
+	Total      int64 `json:"total"`
+	TotalPages int   `json:"total_pages"`
+}
+
+type AdminUpdateUserRequest struct {
+	FullName      *string `json:"full_name" binding:"omitempty,min=2,max=100,maxbytes=400"`
+	Phone         *string `json:"phone" binding:"omitempty,min=9,max=20,maxbytes=20"`
+	Email         *string `json:"email" binding:"omitempty,email,maxbytes=254"`
+	EmailVerified *bool   `json:"email_verified"`
+	DateOfBirth   *string `json:"date_of_birth" binding:"omitempty,datetime=2006-01-02"`
+	AvatarURL     *string `json:"avatar_url" binding:"omitempty,url,maxbytes=2048"`
+}
+
+type AdminChangeStatusRequest struct {
+	Status string `json:"status" binding:"required,oneof=active inactive locked"`
+}
+
+type AdminNotifyRequest struct {
+	Subject string `json:"subject" binding:"required,max=200,maxbytes=800,mailheader"`
+	Message string `json:"message" binding:"required,max=5000,maxbytes=20000"`
+}
+
+type PermissionResponse struct {
+	ID          uint64  `json:"id"`
+	Name        string  `json:"name"`
+	Description *string `json:"description"`
+	Resource    string  `json:"resource"`
+	Action      string  `json:"action"`
+}
+
+type RoleResponse struct {
+	ID          uint64               `json:"id"`
+	Name        string               `json:"name"`
+	Description string               `json:"description"`
+	CreatedAt   time.Time            `json:"created_at"`
+	Permissions []PermissionResponse `json:"permissions,omitempty"`
+}
+
+type CreateRoleRequest struct {
+	Name        string `json:"name" binding:"required,max=50,maxbytes=200"`
+	Description string `json:"description" binding:"max=255,maxbytes=1020"`
+}
+
+type UpdateRoleRequest struct {
+	Name        string `json:"name" binding:"required,max=50,maxbytes=200"`
+	Description string `json:"description" binding:"max=255,maxbytes=1020"`
+}
+
+type AssignPermissionsRequest struct {
+	PermissionIDs []uint64 `json:"permission_ids" binding:"required,max=500"`
+}
+
+type AssignRoleRequest struct {
+	RoleID uint64 `json:"role_id" binding:"required"`
+}
+
+type ExportAuditLogsRequest struct {
+	UserID    *uint64 `form:"user_id"`
+	Action    *string `form:"action"`
+	StartDate *string `form:"start_date" binding:"omitempty,datetime=2006-01-02"`
+	EndDate   *string `form:"end_date"   binding:"omitempty,datetime=2006-01-02"`
+}

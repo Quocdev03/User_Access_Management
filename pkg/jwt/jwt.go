@@ -15,19 +15,32 @@ var (
 )
 
 type Claims struct {
-	UserID uint64   `json:"user_id"`
-	Type   string   `json:"type"`
-	Roles  []string `json:"roles"`
+	UserID      uint64   `json:"user_id"`
+	AuthVersion uint64   `json:"auth_version"`
+	Type        string   `json:"type"`
+	Roles       []string `json:"roles"`
 	golangjwt.RegisteredClaims
 }
 
 func GenerateToken(userID uint64, roles []string, tokenType string, expiry time.Duration, secret string) (string, string, error) {
+	return GenerateTokenWithAuthVersion(userID, 0, roles, tokenType, expiry, secret)
+}
+
+func GenerateTokenWithAuthVersion(
+	userID uint64,
+	authVersion uint64,
+	roles []string,
+	tokenType string,
+	expiry time.Duration,
+	secret string,
+) (string, string, error) {
 	jti := uuid.New().String()
 	now := time.Now()
 	claims := Claims{
-		UserID: userID,
-		Type:   tokenType,
-		Roles:  roles,
+		UserID:      userID,
+		AuthVersion: authVersion,
+		Type:        tokenType,
+		Roles:       roles,
 		RegisteredClaims: golangjwt.RegisteredClaims{
 			ID:        jti,
 			ExpiresAt: golangjwt.NewNumericDate(now.Add(expiry)),
@@ -47,11 +60,11 @@ func GenerateToken(userID uint64, roles []string, tokenType string, expiry time.
 
 func ParseToken(tokenStr string, secret string) (*Claims, error) {
 	token, err := golangjwt.ParseWithClaims(tokenStr, &Claims{}, func(token *golangjwt.Token) (interface{}, error) {
-		if _, ok := token.Method.(*golangjwt.SigningMethodHMAC); !ok {
+		if token.Method.Alg() != golangjwt.SigningMethodHS256.Alg() {
 			return nil, ErrInvalidToken
 		}
 		return []byte(secret), nil
-	})
+	}, golangjwt.WithValidMethods([]string{golangjwt.SigningMethodHS256.Alg()}))
 
 	if err != nil {
 		if errors.Is(err, golangjwt.ErrTokenExpired) {

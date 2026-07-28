@@ -25,6 +25,11 @@ func GetDB(ctx context.Context, defaultDB *sqlx.DB) DBExecutor {
 	return defaultDB
 }
 
+func InTransaction(ctx context.Context) bool {
+	_, ok := ctx.Value(txKey{}).(*sqlx.Tx)
+	return ok
+}
+
 type TxManager struct {
 	db *sqlx.DB
 }
@@ -33,13 +38,10 @@ func NewTxManager(db *sqlx.DB) *TxManager {
 	return &TxManager{db: db}
 }
 
-// RunInTx thực thi hàm fn trong ngữ cảnh của một transaction.
-// Nếu context truyền vào đã chứa transaction (Nested transaction), nó sẽ chia sẻ chung kết nối hiện tại.
-// Chú ý: TUYỆT ĐỐI không bắt lỗi từ một nested call rồi tiếp tục thao tác trên cùng transaction đó,
-// vì kết nối db đằng sau đã bị poison và bắt buộc phải bị rollback toàn bộ bởi transaction cha ở ngoài cùng.
+// RunInTx thực thi fn trong một transaction và từ chối nested transaction.
 func (tm *TxManager) RunInTx(ctx context.Context, fn func(txCtx context.Context) error) error {
-	if _, ok := ctx.Value(txKey{}).(*sqlx.Tx); ok {
-		return fn(ctx)
+	if InTransaction(ctx) {
+		return fmt.Errorf("nested MySQL transaction is not allowed")
 	}
 
 	tx, err := tm.db.BeginTxx(ctx, &sql.TxOptions{})

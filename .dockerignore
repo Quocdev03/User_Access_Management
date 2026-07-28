@@ -1,0 +1,16 @@
+.git
+.github
+.agents
+.env
+.env.*
+uam-api.env
+bin
+uploads
+ui_test
+plan
+*.exe
+*.log
+coverage.out
+coverage.html
+*.png
+skills-lock.json

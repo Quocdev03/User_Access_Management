@@ -2,7 +2,9 @@ package database
 
 import (
 	"context"
+	"errors"
 	"fmt"
+	"net"
 	"strings"
 	"time"
 
@@ -14,29 +16,33 @@ func ConnectRedis(cfg config.RedisConfig) (*redis.Client, error) {
 	var opt *redis.Options
 	var err error
 
-	// Hỗ trợ định dạng URL (vd: redis://red-xxxx:6379) từ các PaaS như Render
 	if strings.HasPrefix(cfg.Host, "redis://") || strings.HasPrefix(cfg.Host, "rediss://") {
 		opt, err = redis.ParseURL(cfg.Host)
 		if err != nil {
-			return nil, fmt.Errorf("failed to parse redis url: %w", err)
+			return nil, fmt.Errorf("failed to parse redis URL: %w", err)
 		}
 	} else {
 		opt = &redis.Options{
-			Addr:     fmt.Sprintf("%s:%s", cfg.Host, cfg.Port),
-			Password: cfg.Password, // mật khẩu kết nối Redis (nếu có)
-			DB:       0,            // sử dụng cơ sở dữ liệu mặc định (DB 0)
-			PoolSize: 100,
+			Addr:     net.JoinHostPort(cfg.Host, cfg.Port),
+			Password: cfg.Password,
+			DB:       0,
 		}
 	}
+	opt.PoolSize = cfg.PoolSize
+	opt.MinIdleConns = cfg.MinIdleConns
 
 	client := redis.NewClient(opt)
-
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 	defer cancel()
-
 	if err := client.Ping(ctx).Err(); err != nil {
+		closeErr := client.Close()
+		if closeErr != nil {
+			return nil, errors.Join(
+				fmt.Errorf("failed to connect to Redis: %w", err),
+				fmt.Errorf("close failed Redis client: %w", closeErr),
+			)
+		}
 		return nil, fmt.Errorf("failed to connect to Redis: %w", err)
 	}
-
 	return client, nil
 }

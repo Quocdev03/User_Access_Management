@@ -1,256 +1,80 @@
-# UAM — Tiến độ triển khai
+# UAM — Implementation Status
 
-> Cập nhật lần cuối: 2026-07-14
+> Updated: 2026-07-28
 
----
+## Release checkpoint
 
-## ✅ Follow-up sau audit (2026-07-13 → 2026-07-14)
+The domain-first modular-monolith restructure is complete.
 
-| Hạng mục | Thay đổi |
-|----------|----------|
-| **Admin seed (1 acc)** | Thống nhất toàn docs/README/env: email `admin@localhost.local`, password `LocalDev@ChangeMe1`, username DB `admin_local` (không dùng login). Bỏ wording force-change cho seed local. |
-| **Mail local** | Plain SMTP cho Mailpit; Docker map host **`1026:1025`** (bug Windows Docker port 1025 không trả SMTP banner). Remote Resend: port **587**. Fallback log OTP khi SMTP fail (dev). |
-| **Mail code** | Gọn `mail_service.go` (`mock` / `local` / `remote`); test `mail_service_test.go`. |
-| **Devices** | Ghi device lúc login; `device_name` **VARCHAR(255)** (migration `000016`); `device_type` mobile/tablet/desktop. |
-| **UA parser** | Thay heuristic bằng **`github.com/ua-parser/uap-go`** (`parseUserAgent` + tests). |
-| **Audit IP** | Login ghi `Resource=auth`. Production: mặc định trust proxy (`X-Forwarded-For`) khi `TRUSTED_PROXIES` trống — local vẫn thấy `::1` / `127.0.0.1` nếu test trên máy. |
-| **README** | Viết lại gọn (training project); không lặp kiến trúc/docs. |
-| **Env templates** | `.env.example`, `.env.local.example`, `.env.production.example`; gitignore secret exports. |
-| **UI test** | Sessions / devices / delete role; path API khớp router; hint seed admin. |
-| **Tooling** | `make swagger` / `make.cmd swagger` (+ install). |
+| Concern | Current state |
+| --- | --- |
+| Architecture | `httpapi → domain use case → policy/adapter`; manual dependency injection |
+| Public API | 41 operations, one semantic owner each, generated OpenAPI and contract tests |
+| Database | MySQL migration `000034`, `dirty=false`; canonical schema only |
+| Account state | `internal/accountstate` is the single transition-policy owner |
+| Sessions | Durable MySQL session/auth-version/reuse history; Redis holds TTL-only state |
+| Workflows | Verification, password reset, email change, MFA and mail outbox are durable |
+| Runtime | Separate `server`, `worker`, `migrate`, `avatar-migrate`, `bootstrap-admin` binaries |
+| Production files | Shared S3-compatible storage; local blob adapter is non-production only |
+| Documentation | Concern-based docs plus ADRs; temporary plan and old Markdown retired |
 
-**Bootstrap admin (source of truth = `migrations/000012`):**
+All fourteen implementation phases are complete: security correction, documentation
+cutover, schema expansion/backfill, account state, sessions, auth, account,
+access/admin, runtime/workers, platform hardening, MFA, HTTP/OpenAPI cutover,
+schema contract and release verification.
+
+## Clean-source inventory
 
 ```text
-email:    admin@localhost.local   ← POST /auth/login
-password: LocalDev@ChangeMe1
-username: admin_local             ← chỉ DB
-role:     admin
+cmd/
+  server  worker  migrate  avatar-migrate  bootstrap-admin
+internal/
+  access  account  accountstate  auth  blob  config  contract
+  httpapi  jobs  mail  mysqlstore  redisstore  session
+pkg/
+  apperror  database  hash  jwt  logger  response  validator
+docs/
+  architecture  data  decisions  domain  openapi  operations  use-cases
+migrations/
+  000001..000034
 ```
 
-**Commits liên quan:** `0310d0a` (audit B + docs/mail/devices), `95f8fe6` (unify admin credentials docs).
+The removed global layer packages are not runtime compatibility boundaries and must
+not be recreated. Redis keys are namespaced under `uam:v1`; MySQL runtime code no
+longer reads or writes contracted projections.
 
----
+## Release verification evidence
 
-## ✅ Audit remediation (2026-07-13) — Approach B
+- Local `go build ./...`, `go test ./...`, `go vet ./...`, `staticcheck ./...` and
+  `go mod verify` pass.
+- Migration integration passes for empty-up, historical current-data upgrades,
+  duplicate-permission fail-closed behavior and schema `031 → 034` contract.
+- Auth, account, access, jobs, MySQL store and Redis integration suites pass on
+  isolated disposable databases and Redis.
+- Concurrency/failure tests pass for credential changes, verification, email,
+  refresh/revoke, last-admin/RBAC, MFA, outbox and worker leases.
+- Manual runtime smoke passes liveness/readiness/metrics, bootstrap, register,
+  email verification, login/refresh/logout, password reset/change, profile, avatar,
+  session/client profile, email change, admin/RBAC, MFA setup and audit export.
+- Smoke outbox delivered all six events, produced no dead letters and retained no
+  secret payload after delivery.
+- The production image builds as non-root and contains all five operational binaries,
+  migrations and a health check.
+- Local and production runtime env files have the same key inventory as their
+  templates; obsolete TLS keys were removed without replacing existing secret values.
+- `go test -race -count=1 ./...` passes in a Linux Go 1.26.2 container.
+- CI now enforces quality, Linux race, disposable MySQL/Redis integration, image
+  build and a SHA-pinned vulnerability scan. It does not auto-deploy production.
+- Formatting, whitespace, package/path, Markdown and generated-contract inventory
+  gates pass; all disposable databases, processes and temporary artifacts are removed.
 
-Đã xử lý theo `codebase-audit-report.md` (sửa tại nguồn, gộp helper, xóa dead/secret):
+## Operational limits
 
-| Hạng mục | Thay đổi chính |
-|----------|----------------|
-| Secrets | Xóa `superadmin_credentials.txt`, `database.sql`; seed `admin_local` / `admin@localhost.local` / `LocalDev@ChangeMe1` |
-| P0 bugs | Pagination `PerPage`, handler `return`, admin DTO `binding:` |
-| Sessions | `InvalidateUserSessions` (MySQL + Redis epoch); role/status/password/email dùng helper |
-| JTI | Cột `sessions.jti`; blacklist khi logout session / refresh; login lưu jti |
-| OTP | Hash SHA-256(+pepper) at rest; cột `code` VARCHAR(64) |
-| Security | HTML escape notify, hide 500 details in release, swagger non-prod, TLS skip-verify flag, trusted proxies, mock mail no body |
-| Config | `MaxFailedAttempts` / `OTPExpiry` / `OTPMaxAttempts` / `OTPPepper` wiring |
-| Feature | Device tracking on login; static `/uploads`; server timeouts; system role delete guard |
-| Dedup | `ValidateNewPassword`, `HashOTP`, `clampRequestMeta`, OTP query gộp |
-| Tests | `pkg/hash` unit tests (password + OTP hash + dummy bcrypt) |
-
-**Ops còn lại (ngoài code):** rotate JWT/SMTP/DB secrets nếu từng lộ; Render `DB_HOST` phải khớp Aiven Overview (DNS no such host = hostname sai/service xóa).
-
-### Docs cleanup (2026-07-13)
-- Xóa docs dư/lệch; còn 4 file: `01-architecture`, `02-database-design`, `03-use-cases`, `04-environment-setup` + swagger generated.
-- Map: `AGENTS.md` + `README.md` trỏ `docs/01`…`04`.
-
----
-
-## ✅ Đã hoàn thành
-
-### 🏗️ Nền móng (Base Infrastructure)
-| File | Mô tả |
-|------|-------|
-| `cmd/server/main.go` | Entry point: load config, init logger, kết nối MySQL/Redis, graceful shutdown |
-| `internal/router/router.go` | Gin router, health check `/health`, `/health/ready`, group `/api/v1` |
-| `pkg/response/response.go` | Chuẩn hóa response thành công/lỗi |
-| `pkg/apperror/errors.go` | Custom error với HTTP status code |
-| `pkg/logger/logger.go` | Zap structured logger (dev/prod mode) |
-| `pkg/hash/password.go` | bcrypt hash + verify password |
-| `pkg/jwt/jwt.go` | JWT sinh, parse và xác thực token (HS256) |
-| `migrations/` | 000001–000016 (users, RBAC, sessions+jti, devices, otp hash col, audit, seeds, must_change_password, notify perm, widen device_name) |
-
----
-
-### 🔐 Auth Module — UC-01, 02, 03, 04, 05 (Phase 1 & 2)
-
-#### Models
-| File | Nội dung |
-|------|---------|
-| `internal/model/user.go` | Struct `User`, constants `StatusActive/Inactive/Locked` |
-| `internal/model/role.go` | Struct `Role` |
-| `internal/model/otp.go` | Struct `OTPCode` (có `attempts`, `is_used`) |
-| `internal/model/session.go` | Struct `Session` (tương ứng bảng database `sessions`) |
-
-#### DTOs
-| File | Nội dung |
-|------|---------|
-| `internal/dto/auth.go` | `RegisterRequest/Response`, `VerifyEmailRequest`, `LoginRequest/Response`, `UserInfoResponse`, `RefreshTokenRequest/Response` |
-
-#### Repository Layer (MySQL & Redis)
-| File | Methods |
-|------|---------|
-| `internal/repository/user_repository.go` | `Create`, `FindByEmail`, `FindByUsername`, `UpdateStatus`, `UpdateLastLogin`, `IncrementFailedLogins`, `LockAccount`, `FindByID`, `UpdatePassword` |
-| `internal/repository/otp_repository.go` | `Create`, `GetLatestValidCodeForUpdate`, `IncrementAttempts`, `MarkAsUsed` |
-| `internal/repository/password_reset_repo.go` | `Create`, `FindByTokenHash`, `MarkAsUsed`, `InvalidateAllUserTokens` |
-| `internal/repository/role_repository.go` | `FindByName`, `AssignRoleToUser` |
-| `internal/repository/session_repository.go` | `Create`, `Update`, `FindByRefreshTokenHash`, `DeleteByRefreshTokenHash`, `DeleteByTokenHash`, `DeleteByUserID`, `AddToBlacklist` (Redis), `IsBlacklisted` (Redis) |
-
-#### Service Layer (Business Logic)
-| File | Logic đã implement |
-|------|------------------|
-| `internal/service/auth_service.go` | **Register**: hash pass → check email/username trùng → tạo user inactive → gán role `user` → sinh OTP (crypto/rand) → gửi email thực tế |
-| | **VerifyEmail**: validate OTP → đếm lần sai → block sau 5 lần → mark as used → active account |
-| | **ResendVerificationEmail**: tìm user → kiểm tra trạng thái → sinh OTP mới → lưu DB → gửi lại OTP (UC-02) |
-| | **Login**: kiểm tra status/lock → verify pass → tự unlock nếu hết hạn → khóa 30p sau 5 lần sai → update last_login → sinh JWT thật (access & refresh) → tạo session trong DB |
-| | **Refresh**: validate refresh token → kiểm tra session DB → rotation (tạo mới cả 2 token) → thu hồi session cũ và tạo session mới |
-| | **Logout**: tính TTL còn lại của access token → thêm JTI vào Redis blacklist → xóa session trong MySQL bằng token_hash |
-| | **Forgot/Reset Password**: sinh mã token băm, gửi email link, đổi mật khẩu và vô hiệu hóa session |
-| | **Change Password**: verify mật khẩu cũ, cập nhật và vô hiệu hóa các thiết bị khác |
-| `internal/service/mail_service.go` | **SendEmail**: tích hợp SMTP qua `gomail.v2` gửi email xác thực, khôi phục mật khẩu |
-
-#### Handler & Routes
-| File | Routes |
-|------|-------|
-| `internal/middleware/auth_middleware.go` | Middleware xác thực JWT access token, kiểm tra Redis blacklist, inject user context |
-| `internal/middleware/rbac_middleware.go` | Middleware kiểm tra phân quyền (RBAC) bằng JWT roles |
-| `internal/handler/auth_handler.go` | `Register`, `VerifyEmail`, `Login`, `RefreshToken`, `Logout`, `LogoutAll`, `ForgotPassword`, `ResetPassword`, `ChangePassword`, `ForceChangePassword` |
-| `internal/router/router.go` | (Cấu hình Gin, Swagger docs và khai báo các group API chính) |
-
----
-
-### 👤 User Profile Module — UC-11~14 (Phase 3)
-
-#### DTOs
-| File | Nội dung |
-|------|---------|
-| `internal/dto/user_dto.go` | `UserProfileResponse`, `UpdateProfileRequest`, `RequestEmailChangeRequest`, `VerifyEmailChangeRequest`, `UploadAvatarResponse` |
-
-#### Repository Layer (MySQL & Redis)
-| File | Methods |
-|------|---------|
-| `internal/repository/session_repository.go` | `SetEmailChangePending`, `GetEmailChangePending`, `DeleteEmailChangePending` |
-
-#### Service Layer (Business Logic)
-| File | Logic đã implement |
-|------|------------------|
-| `internal/service/user_service.go` | `GetProfile`, `UpdateProfile`, `RequestEmailChange`, `VerifyEmailChange`, `ResendChangeEmailOTP`, `UploadAvatar`, `DeleteAvatar` |
-| `internal/service/mail_service.go` | `SendEmailChangeNotification` |
-
-#### Handler & Routes
-| File | Routes |
-|------|-------|
-| `internal/handler/user_handler.go` | Các handler tương ứng cho Profile, Email, Avatar |
-| `internal/router/router.go` | `GET /api/v1/users/me`, `PUT /api/v1/users/me`, `POST /api/v1/users/me/email/change-request`, `POST /api/v1/users/me/email/verify`, `POST /api/v1/users/me/email/resend`, `POST /api/v1/users/me/avatar`, `DELETE /api/v1/users/me/avatar` |
-
----
-
-## 🐛 Bugs đã fix (Self-Review)
-| # | Vấn đề | Fix |
-|---|--------|-----|
-| A1 | Logic off-by-one khi kiểm tra ngưỡng khóa | Kiểm tra trước, increment sau |
-| A2 | Thời gian khóa sai spec (15p → 30p) | Constant lockDuration = 30 * time.Minute |
-| A3 | Thiếu kiểm tra username trùng | Thêm FindByUsername + check trong Register |
-| A4 | math/rand không đủ bảo mật cho OTP | Đổi sang crypto/rand |
-| B1 | fmt.Printf vi phạm convention | Inject Zap Logger |
-| B2 | Thiếu error wrapping | fmt.Errorf("context: %w", err) |
-| B3 | Anonymous struct trong DTO | Tách thành UserInfoResponse |
-| B4 | Xung đột package name `jwt` | Alias thư viện `golang-jwt` bên ngoài thành `golangjwt` để tránh đè namespace |
-| B5 | Kiểu dữ liệu User ID không đồng bộ | Đồng bộ Claims.UserID thành uint64 |
-| B6 | Rủi ro mất session khi Refresh | Chuyển sang UPDATE session thay vì Delete+Create |
-| B7 | Lỗi sập Redis gây Fail-Closed | Chuyển sang cơ chế Fail-Open cho Redis blacklist check |
-| B8 | Comment tiếng Anh và thiếu comment | Chuẩn hóa toàn bộ comment tiếng Anh sang tiếng Việt, bổ sung đầy đủ comment tiếng Việt cho toàn bộ struct/interface/method/logic trong internal/ và pkg/ |
-| B9 | Lỗi parse struct do kiểu dữ liệu NULL (LastLoginAt, DateOfBirth, Phone, AvatarURL) | Sửa thành dùng con trỏ (pointer) trong struct User |
-| B10 | Nguy cơ lỗi 500 do Database Data Truncation và Type Mismatch (DateOfBirth string vs time.Time) | Bổ sung tag `max=`, `datetime=` vào DTO, đổi `DateOfBirth` thành `time.Time` và dùng `time.Parse` |
-| B11 | Lỗi `duplicate migration file` khi chạy `make.cmd migrate-up` do có 2 file version 000001 | Xóa các file `000001_init_schema`, di chuyển nội dung ra file `database.sql` bên ngoài root |
-| M1 | Yêu cầu nghiệp vụ bắt buộc khai báo Phone, DateOfBirth lúc đăng ký | Cập nhật file migration sang NOT NULL, DTO sang required, code service/repository tương ứng |
-| M2 | Thiếu công cụ chạy Makefile trên Windows | Bổ sung file `make.cmd` hỗ trợ chạy các lệnh tương đương trên CMD/PowerShell |
-| M3 | Tối ưu tài nguyên hệ thống Docker | Gỡ bỏ `adminer` và `redis-commander` khỏi `docker-compose.yml`, chuyển sang dùng Desktop App (DBeaver, Redis Insight) |
-| M4 | Cung cấp tài khoản Super Admin sẵn để dễ dàng test | Tạo migration `000012_seed_superadmin` sinh sẵn user `admin_quocdev` với đầy đủ các field và role `admin` |
-| B12 | Rủi ro lỗi panic khi query database nếu dữ liệu user thiếu họ tên (`full_name` = NULL) | Sửa file migration `000001` cập nhật `full_name` sang `NOT NULL`, reset lại database. Đồng thời cập nhật lại schema trong Docs và file `database.sql` |
-| B13 | VULN-001: Lỗ hổng TOCTOU (Race Condition) khi Rate Limit đăng nhập | Sử dụng Transaction (Pessimistic Lock) kết hợp nguyên tử hóa cập nhật `failed_login_attempts` trong `UserRepository` |
-| B14 | VULN-002: Không phát hiện Token Reuse khi kẻ xấu dùng lại Refresh Token cũ | Thêm cơ chế lưu Refresh Token cũ vào danh sách thu hồi (Redis). Xóa toàn bộ session của User nếu phát hiện reuse |
-| B15 | VULN-003: Lỗ hổng Timing Attack dò tìm email | Bổ sung hàm băm mật khẩu giả (Dummy bcrypt hash) khi không tìm thấy user, cân bằng thời gian phản hồi |
-| B16 | VULN-004: Lỗ hổng TOCTOU (Race Condition) khi kiểm tra giới hạn nhập sai OTP | Sử dụng Transaction (Pessimistic Lock) nguyên tử hóa cập nhật số lần nhập sai OTP trong `OTPRepository` |
-| R1 | Tối ưu code theo chuẩn Golang (Code Style & Generics) | Tối ưu `auth_handler.go` với Generic function `bindAndValidate[T any]`. Tối ưu `auth_service.go` với `generateTokenPair`, loại bỏ `else` lồng ghép thừa thãi và tách method `handleFailedLogin`. |
-| M5 | Tích hợp gửi email thực tế (UC-25, UC-26) | Thay thế mock bằng cấu hình Resend SMTP, cho phép gửi OTP và Link thật tới người dùng; bổ sung tài liệu vận hành. |
-| B17 | Lỗ hổng Logic & Bảo mật trong Forgot/Reset/Change Password | Fix lỗi dò rỉ email (che giấu lỗi SMTP 500), chống spam Rate Limit cho Forgot Password, chống Brute-Force mật khẩu cũ, khắc phục Race Condition khi Reset bằng Atomic Query, và đảm bảo thứ tự thu hồi Session trước khi update DB. |
-| R2 | Loại bỏ code dư thừa (Golang Performance) | Refactor `auth_service.go` và các Repository, loại bỏ Query thừa (TOCTOU, N+1), gỡ bỏ Transaction không cần thiết (Lock Contention) cho các hàm tăng biến đếm, gộp các Query cập nhật Database. |
-| M6 | Sửa lỗi kết nối MySQL khi deploy trên PaaS (Aiven/Render) | Cập nhật cấu hình connection string thêm `tls=skip-verify` cho MySQL driver khi chạy ở môi trường production. |
-| M7 | Fix lỗi Crash do thiếu file `.env` trên môi trường Server/PaaS | Bỏ qua lỗi `no such file or directory` trong hàm `viper.ReadInConfig()` để hệ thống tự động sử dụng biến môi trường có sẵn của OS (Render, VPS). |
-| M8 | Clean Code (Refactoring) MySQL/Redis connections | Áp dụng Go Clean Code: Dùng `mysql.Config` thay vì `fmt.Sprintf`, dùng `strings.HasPrefix` cho Redis URL để tránh lỗi panic cắt chuỗi thô. |
-| B18 | Lỗi CORS bị chặn khi test UI | Thêm file `cors.go` và cấu hình `middleware.CORSMiddleware()` trong `router.go` cho phép Origin `*` để test API qua trình duyệt. |
-| B19 | Log rác (Stack trace) khi In ra WARN log | Thêm option `zap.AddStacktrace(zapcore.ErrorLevel)` vào `pkg/logger/logger.go` để Zap chỉ in stack trace đối với lỗi thực sự (ERROR trở lên). |
-| R3 | Refactor `pkg/apperror` bị máy móc | Mở rộng toàn bộ Error Code theo chuẩn `04-api-design.md`, bổ sung tính năng wrap lỗi gốc (`WithErr`) và truyền chi tiết động (`WithDetails`) cho `AppError`. |
-| M6 | Hoàn thiện 100% module Authentication & Security (UC-21, UC-09, UC-10, UC-28) | Đã bổ sung `LogoutAll` để hủy mọi session (UC-21). Bổ sung `RBAC Middleware` và tối ưu chèn `Roles` vào JWT (UC-09, UC-10). Đã thêm model `AuditLog`, `AuditLogRepository` và ghi nhật ký tự động khi Login (UC-28). |
-| B20 | VULN-1: Lỗ hổng JWT Revocation Gap khi đăng xuất / đổi mật khẩu | Bổ sung cơ chế `Global User Revocation Epoch` trên Redis và Middleware chặn JWT cũ, vô hiệu hóa token chủ động tức thời, vá lỗ hổng chiếm quyền. |
-| B21 | VULN-2: Lỗi Data Truncation Error dẫn đến DoS thông qua User-Agent | Bổ sung code giới hạn, cắt ngắn chuỗi `User-Agent` (500) và `IP Address` (45) trước khi ghi vào Database tại `Login` và `Refresh`. |
-| R4 | Loại bỏ sự rườm rà (Over-engineering), Interface Sprawl và God Object | Đã gỡ bỏ toàn bộ interface giả ở Repository và Service. Gộp các Query cập nhật Database. Tách AuthService thành AuthService & PasswordService. Refactor `errors.go` chuẩn hóa hơn. |
-| B22 | Data Inconsistency do thiếu Database Transaction | Thêm `pkg/database/tx.go` (TxManager). Bọc tất cả thao tác Database trong các tầng Service (`Register`, `VerifyEmail`, `ResetPassword`,...) vào `RunInTx` để đảm bảo tính ACID. Sửa chuẩn tên `*_model.go`. Fix lỗi logic `LogoutAll`. |
-| R5 | Refactor `mail_service.go` vi phạm Open/Closed Principle | Áp dụng Strategy Pattern và Dependency Injection (Interface `MailSender`), tách biệt logic gửi qua Resend SDK (HTTP API) và Gomail (SMTP) giúp code dễ bảo trì và dễ mock. |
-| M9 | Loại bỏ Prometheus & Grafana | Dọn dẹp cấu hình giám sát không cần thiết khỏi file `docker-compose.yml` và tài liệu để hệ thống nhẹ nhàng hơn. |
-| M10 | Cài đặt GitHub Actions CI/CD | Cấu hình `.github/workflows/ci.yml` tự động build, test Go (1.26.2), đồng thời tích hợp GitHub Deployments API để quản lý lịch sử deploy và gọi webhook tự động cập nhật Render khi test pass. |
-| M11 | Phục vụ API Tester UI tại Root URL | Cấu hình router serve `ui_test/index.html` tại root `/`. Cập nhật Dockerfile để bundle thư mục `ui_test`. Tự động hóa phát hiện Base URL và active class trên UI. |
-| M12 | Sửa lỗi logic khóa tài khoản & Tích hợp Ban IP | Sửa lỗi reset khóa/ghi đè failed login attempts trong auth service. Triển khai `RateLimitMiddleware` (sử dụng Redis) ban IP 15 phút khi phát hiện spam trên API chung, login, register, forgot-password, resend OTP. |
-| M13 | Tối ưu hóa Concurrency & Bảo mật API Auth | Gửi mail xác thực và reset mật khẩu bất đồng bộ bằng Goroutines. Chặn spam mail ảo bằng cách di chuyển rate limit trong ForgotPassword lên đầu. Ghi audit log khi login thành công. Ràng buộc rollback đăng ký nếu gán default role thất bại. |
-| M14 | Tái cấu trúc tài liệu tránh ràng buộc code | Loại bỏ mã nguồn chi tiết trong `03-coding-conventions.md`. Đồng bộ hóa path `/auth/refresh-token` trong `04-api-design.md`. |
-| B23 | Lỗ hổng OTP Brute Force & Race Condition trên `/verify-email` | Bổ sung rate limit IP/Email, bọc logic kiểm tra OTP & tăng attempts vào transaction với `SELECT ... FOR UPDATE` (Pessimistic Lock). |
-| B24 | Race Condition (TOCTOU) khi xoay vòng Refresh Token | Bọc logic refresh vào transaction và sử dụng pessimistic lock `SELECT ... FOR UPDATE` khi đọc session theo refresh token hash. |
-| B25 | Lệch đặc tả Password Policy | Bổ sung validator kiểm tra độ phức tạp của mật khẩu (chữ hoa, chữ thường, số, ký tự đặc biệt) trước khi hash trong Register, Reset, và Change Password. |
-| B26 | Thiếu rate limit cho các API nhạy cảm và readiness probe | Cấu hình RateLimitMiddleware chi tiết cho `/health/ready`, `/verify-email`, `/refresh-token`, `/reset-password`, và `/change-password` trong `router.go`. |
-| M15 | Đồng bộ tài liệu và chuẩn bị thiết kế cho các API chưa implement | Cập nhật tài liệu Use Cases và API Design để phản ánh chính xác các endpoints đang chạy, thống nhất thiết kế luồng Đổi Email 3 bước bảo mật và các Use Case quản lý Roles/Permissions/Devices của Admin/User. |
-| R6 | Tái cấu trúc (Refactoring) tối ưu hóa và khử trùng lặp | Tập trung hàm băm SHA256 vào `pkg/hash`, khử trùng lặp logic truy vấn `FOR UPDATE` trong Repository, trích xuất helper `createAndSendOTP` trong AuthService để làm sạch codebase. |
-| R7 | Giải quyết các vấn đề từ Audit Report (Refactoring) | Gộp OTP logic vào `OTPService`, dọn rác DB bằng `CleanupWorker` chạy ngầm, gỡ bỏ `resend-go` SDK để đơn giản hóa Mail Service, tách nhỏ Router (`auth_routes.go`, `user_routes.go`), và tập trung constant vào `constant.go`. |
-| R8 | Khắc phục các lỗi Logic và Security từ Audit Report | Vá lỗi Race Condition (Email gửi ngoài Transaction, Atomic LockAccount), chuẩn hóa toàn bộ `time.Now().UTC()`, thêm `context.WithTimeout` cho CleanupWorker, bổ sung giới hạn Max Length 72 cho Password (phòng chống DoS bcrypt). |
-| R9 | Tái cấu trúc RateLimitMiddleware & Cải thiện UX Anti-Spam | Phân tách Soft Limit (429 Too Many Requests) và Hard Ban (403 IP Banned) trong RateLimitMiddleware. Tăng số lần thử đăng nhập tối đa lên 10 lần sai sẽ khóa 15 phút. Nới lỏng cấu hình Rate Limit cho toàn bộ API để tránh chặn oan người dùng. |
-| R10 | Quét toàn diện codebase & Fix triệt để 51 lỗi Logic/Security/Dead Code | Loại bỏ mã chết (unused error/const, struct `UserServiceParams`), sửa deadlock & tối ưu transaction (RunInTx) trong User, Auth & Password Service. Gắn Fail-Closed cho Middleware (trả 503 khi Redis lỗi). Bổ sung API Resend & Cancel Email Change OTP. Đổi BindJSON sang Validator chuẩn. |
-| R11 | Đơn giản hóa kiến trúc luồng Đổi Email (UC-14) | Rút gọn từ 5 API xuống 2 API, loại bỏ EmailChangeToken rườm rà. Gửi đồng thời 2 OTP và verify atomic bằng FOR UPDATE để chống spam, lỗi state và Race Condition. |
-| R12 | Hoàn thiện fix triệt để 25 lỗi theo Code Review mới nhất | Chuẩn hóa tag, khắc phục TOCTOU trong RateLimit và OTP, chặn bypass auth bằng magic bytes, Hash OTP, fix lọt Redis I/O trong SQL Tx, tối ưu code logic toàn diện. |
-| R13 | Cập nhật fix 5 lỗi sót lại từ đợt Review V2 | Bổ sung dummy bcrypt chống Timing Attack (VerifyEmail, Login), sửa lỗi parse viper.GetDuration thành nanoseconds, chống lãng phí CPU khi đổi cùng mật khẩu, dùng hằng số thay hardcode RBAC, và ghi log khi lỗi lấy Roles. |
-| R14 | Chuẩn hóa Endpoint Naming REST | Đổi toàn bộ các URL verb thành dạng `resource/action` (vd: `/auth/verify-email` -> `/auth/email/verify`) và đồng bộ tài liệu, UI test theo chuẩn REST. |
-| B27 | Sửa lỗi Panic và Phân quyền RBAC trong Admin Module | Sửa lỗi `MustGet("user")` thành `"tokenClaims"`. Thay thế `GetRolesByUserID` bằng `GetPermissionsByUserId` trong `PermissionMiddleware` để sửa lỗi 403. |
-| B28 | Giải quyết Deadlock Đổi mật khẩu bắt buộc (`MustChangePassword`) | Bổ sung API `POST /api/v1/auth/force-change-password` để người dùng đổi mật khẩu tạm do Admin cung cấp mà không cần JWT Access Token. |
-| B29 | Lỗi công thức phân trang Admin | Cập nhật lại công thức `totalPages` trong `AdminUserService` để chia đúng số trang dựa trên `req.PerPage`. |
-| B30 | Lỗ hổng Broken Access Control và sai permission | Bổ sung `RequireRole(admin, moderator)` cho group `/admin`. Sửa 2 quyền `users.lock` và `users.reset_password`. Thêm admin bypass trong Middleware. Cập nhật CROSS JOIN tại migration `000014` để chống rớt quyền admin khi re-seed. |
-| M16 | Triển khai quản lý Roles & Permissions (UC-32) | Tạo `AdminRoleHandler` với đầy đủ CRUD cho Role, gán quyền cho role, gán role cho user. Tích hợp `AdminRoleService` và route. |
-| M17 | Triển khai Audit Log (UC-30) | Theo dõi user actions như update_profile, login. Bổ sung tính năng Admin xuất log ra file CSV trong `AdminAuditLogHandler` (tối đa 10,000 dòng có BOM). |
-| M18 | Tự động hóa API Docs bằng Swagger | Đã thêm toàn bộ annotation Swaggo cho hơn 30 API Endpoints (`auth`, `users`, `admin`), sinh file json/yaml thành công, cấu hình `gin-swagger` chạy trên route `/swagger/*any`. Khắc phục lỗi tương thích `LeftDelim` của lib cũ. |
-| R15 | Refactoring cấu trúc thư mục theo Business Domain | Gộp các file nhỏ lẻ trong từng layer (DTO, Model, Repository, Service, Handler) thành các file lớn hơn theo nghiệp vụ (`auth_*`, `admin_*`, `rbac_*`, `system_*`). Giảm tổng số file từ 36 xuống 18, giúp mã nguồn gọn gàng và dễ theo dõi hơn. |
-
----
-
-### 🛡️ Admin Module — UC-15~18, UC-17, UC-27 (Phase 4)
-
-#### DTOs
-| File | Nội dung |
-|------|---------|
-| `internal/dto/admin_user_dto.go` | `AdminListUsersRequest`, `AdminUserListItem`, `AdminUpdateUserRequest`, `AdminChangeStatusRequest`, `AdminNotifyRequest` |
-
-#### Service Layer (Business Logic)
-| File | Logic đã implement |
-|------|------------------|
-| `internal/service/admin_user_service.go` | `ListUsers` (tìm kiếm, lọc theo Role), `GetUserDetail`, `UpdateUser`, `ChangeUserStatus` (bao gồm revoke session), `ResetUserPassword` (MustChangePassword), `NotifyUser` |
-
-#### Handler & Routes
-| File | Routes |
-|------|-------|
-| `internal/router/admin_routes.go` | Setup Group `/admin` với `Role/Permission Middleware` cho User, Roles, Audit Logs |
-| `internal/handler/admin_user_handler.go` | Endpoint quản lý user (`GET /admin/users`, `PUT /admin/users/:id`, `PATCH /admin/users/:id/status`, v.v) |
-| `internal/handler/admin_role_handler.go` | Endpoint quản lý Role và phân quyền (`GET /admin/roles`, `POST /admin/roles`, `POST /admin/roles/:id/permissions`, v.v) |
-| `internal/handler/admin_audit_log_handler.go` | Endpoint xuất nhật ký (`GET /admin/audit-logs/export`) |
-
----
-
-## 🚧 Chưa làm / TODO
-
-| UC | Tính năng | Ghi chú |
-|----|----------|---------|
-| UC-38 | Unit & Integration Test | Đã viết unit test cho `pkg/jwt`, các module khác chưa có |
-
----
-
-## 🔑 Bước tiếp theo đề xuất
-
-1. **Viết Unit/Integration Test** → Đảm bảo độ che phủ code (coverage) cho các module Auth & User.
-2. **Setup ELK/Monitoring** (Tùy chọn) → Đưa Audit Logs từ Database ra hệ thống Elasticsearch để theo dõi theo thời gian thực.
+- Production promotion remains platform-specific and requires explicit approval,
+  a one-off migration job, readiness and post-deploy smoke checks.
+- Redis HA/TLS, provider MySQL TLS and real S3/mail credentials must be verified in
+  staging because local Compose cannot prove provider failover or certificate policy.
+- Contract migrations are forward-only. After migration 034, rollback is a new
+  forward-fix migration rather than an edit or destructive downgrade.
+- Exact SLO and alert thresholds require production traffic; observability docs list
+  the required signals without inventing thresholds.

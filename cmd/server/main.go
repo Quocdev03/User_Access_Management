@@ -1,7 +1,6 @@
 // Package main là điểm bắt đầu (entry point) cho User Access Management service.
-// Nó thực hiện nạp cấu hình, thiết lập kết nối cơ sở dữ liệu (MySQL, Redis),
-// khởi chạy background workers để dọn dẹp dữ liệu, cấu hình HTTP router,
-// và quản lý quá trình tắt server an toàn (graceful shutdown).
+// Nó nạp cấu hình, thiết lập MySQL/Redis, cấu hình HTTP router
+// và quản lý quá trình tắt server an toàn.
 package main
 
 import (
@@ -15,10 +14,10 @@ import (
 	"time"
 
 	"github.com/gin-gonic/gin"
+	_ "github.com/quocdev03/user-access-management/docs/openapi"
+	"github.com/quocdev03/user-access-management/internal/blob"
 	"github.com/quocdev03/user-access-management/internal/config"
-	"github.com/quocdev03/user-access-management/internal/repository"
-	"github.com/quocdev03/user-access-management/internal/router"
-	"github.com/quocdev03/user-access-management/internal/worker"
+	"github.com/quocdev03/user-access-management/internal/httpapi"
 	"github.com/quocdev03/user-access-management/pkg/database"
 	"github.com/quocdev03/user-access-management/pkg/logger"
 	"go.uber.org/zap"
@@ -32,6 +31,9 @@ import (
 // @contact.email quocdt2003@gmail.com
 // @host localhost:8080
 // @BasePath /api/v1
+// @securityDefinitions.apikey BearerAuth
+// @in header
+// @name Authorization
 // main là hàm chính khởi động toàn bộ ứng dụng.
 // Nó nạp biến môi trường, khởi tạo logger toàn cục, thiết lập
 // các kết nối đến MySQL và Redis, sau đó gắn (mount) Gin HTTP router.
@@ -60,11 +62,6 @@ func main() {
 	defer db.Close()
 	logr.Info("Connected to MySQL successfully")
 
-	if err := database.RunMigrations(cfg.Database, "migrations"); err != nil {
-		logr.Fatal("Failed to run database migrations", zap.Error(err))
-	}
-	logr.Info("Database migrations applied successfully")
-
 	redisClient, err := database.ConnectRedis(cfg.Redis)
 	if err != nil {
 		logr.Fatal("Failed to connect to Redis", zap.Error(err))
@@ -72,20 +69,15 @@ func main() {
 	defer redisClient.Close()
 	logr.Info("Connected to Redis successfully")
 
-	otpRepo := repository.NewOTPRepository(db)
-	sessionRepo := repository.NewSessionRepository(db, redisClient)
-	passwordRepo := repository.NewPasswordRepository(db)
-	cleanupWorker := worker.NewCleanupWorker(otpRepo, sessionRepo, passwordRepo, logr)
-
-	workerCtx, workerCancel := context.WithCancel(context.Background())
-	defer workerCancel()
-
-	go cleanupWorker.Start(workerCtx, 24*time.Hour)
+	blobStore, err := blob.NewStore(context.Background(), cfg.Blob)
+	if err != nil {
+		logr.Fatal("Failed to initialize blob store", zap.Error(err))
+	}
 
 	if cfg.App.Env == "production" {
 		gin.SetMode(gin.ReleaseMode)
 	}
-	r := router.Setup(db, redisClient, logr, cfg)
+	r := httpapi.Setup(db, redisClient, logr, cfg, blobStore)
 
 	srv := &http.Server{
 		Addr:              fmt.Sprintf(":%s", cfg.App.Port),
@@ -94,6 +86,7 @@ func main() {
 		ReadTimeout:       30 * time.Second,
 		WriteTimeout:      60 * time.Second,
 		IdleTimeout:       120 * time.Second,
+		MaxHeaderBytes:    16 << 10,
 	}
 
 	go func() {

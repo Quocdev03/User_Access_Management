@@ -42,6 +42,28 @@ func TestGenerateAndParseToken(t *testing.T) {
 	}
 }
 
+func TestGenerateTokenWithAuthVersion(t *testing.T) {
+	const authVersion = uint64(9)
+	token, _, err := GenerateTokenWithAuthVersion(
+		42,
+		authVersion,
+		[]string{"user"},
+		"access",
+		time.Minute,
+		"my-super-secret-key-1234567890",
+	)
+	if err != nil {
+		t.Fatalf("GenerateTokenWithAuthVersion(): %v", err)
+	}
+	claims, err := ParseToken(token, "my-super-secret-key-1234567890")
+	if err != nil {
+		t.Fatalf("ParseToken(): %v", err)
+	}
+	if claims.AuthVersion != authVersion {
+		t.Fatalf("AuthVersion = %d, want %d", claims.AuthVersion, authVersion)
+	}
+}
+
 func TestExpiredToken(t *testing.T) {
 	secret := "my-super-secret-key-1234567890"
 	userID := uint64(42)

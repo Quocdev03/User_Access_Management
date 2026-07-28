@@ -1,0 +1,99 @@
+package main
+
+import (
+	"strings"
+	"testing"
+
+	"github.com/quocdev03/user-access-management/pkg/hash"
+)
+
+func TestRejectKnownBootstrapPasswordHash(t *testing.T) {
+	tests := []struct {
+		name        string
+		fingerprint string
+		wantErr     bool
+	}{
+		{
+			name:        "retired fingerprint",
+			fingerprint: knownBootstrapPasswordSHA256,
+			wantErr:     true,
+		},
+		{
+			name:        "different fingerprint",
+			fingerprint: hash.SHA256("TestOnly@Secure123"),
+			wantErr:     false,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			err := rejectKnownBootstrapPasswordHash(tt.fingerprint)
+			if (err != nil) != tt.wantErr {
+				t.Fatalf("rejectKnownBootstrapPasswordHash() error = %v, wantErr %v", err, tt.wantErr)
+			}
+		})
+	}
+}
+
+func TestParseAndValidateBootstrapInput(t *testing.T) {
+	validArgs := []string{
+		"--username", "first_admin",
+		"--email", "admin@example.com",
+		"--full-name", "First Administrator",
+		"--phone", "0900000000",
+		"--date-of-birth", "1990-01-01",
+	}
+
+	tests := []struct {
+		name     string
+		args     []string
+		password string
+		wantErr  bool
+	}{
+		{
+			name:     "valid input",
+			args:     validArgs,
+			password: "Different@Secure123",
+			wantErr:  false,
+		},
+		{
+			name:     "missing environment password",
+			args:     validArgs,
+			password: "",
+			wantErr:  true,
+		},
+		{
+			name:     "weak environment password",
+			args:     validArgs,
+			password: "weak",
+			wantErr:  true,
+		},
+		{
+			name: "password flag is rejected",
+			args: append(append([]string{}, validArgs...),
+				"--password", "Different@Secure123"),
+			password: "Different@Secure123",
+			wantErr:  true,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			input, err := parseBootstrapInput(tt.args, func(key string) string {
+				if key != bootstrapPasswordEnv {
+					t.Fatalf("unexpected environment key %q", key)
+				}
+				return tt.password
+			})
+			if err == nil {
+				err = validateBootstrapInput(input)
+			}
+			if (err != nil) != tt.wantErr {
+				t.Fatalf("parse/validate error = %v, wantErr %v", err, tt.wantErr)
+			}
+			if err != nil && strings.Contains(err.Error(), tt.password) && tt.password != "" {
+				t.Fatal("validation error exposed the password")
+			}
+		})
+	}
+}

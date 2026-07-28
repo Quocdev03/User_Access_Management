@@ -1,4 +1,4 @@
-.PHONY: help dev run build migrate-up migrate-down migrate-create swagger swagger-install test test-coverage docker-up docker-down
+.PHONY: help dev run worker build migrate avatar-migrate migrate-up migrate-down migrate-create swagger swagger-install test test-coverage docker-up docker-down
 
 # Database URL for golang-migrate
 DB_URL="mysql://uam_user:uam_password@tcp(localhost:3306)/uam_db"
@@ -8,11 +8,14 @@ help:
 	@echo ""
 	@echo "  dev              Run with air (hot reload)"
 	@echo "  run              Run server"
-	@echo "  build            Build binary to bin/server"
+	@echo "  worker           Run cleanup/outbox worker"
+	@echo "  build            Build server, worker and migrate binaries"
+	@echo "  migrate          Apply migrations through cmd/migrate"
+	@echo "  avatar-migrate   Copy/checksum local avatars into S3"
 	@echo "  migrate-up       Apply DB migrations"
 	@echo "  migrate-down     Rollback last migration"
 	@echo "  migrate-create   Create migration (name=...)"
-	@echo "  swagger          Generate docs/docs.go + swagger.json/yaml"
+	@echo "  swagger          Generate docs/openapi/docs.go + swagger.json/yaml"
 	@echo "  swagger-install  Install swag CLI (go install)"
 	@echo "  test             Run tests"
 	@echo "  test-coverage    Tests + coverage HTML"
@@ -23,10 +26,22 @@ dev:
 	air
 
 run:
-	go run cmd/server/main.go
+	go run ./cmd/server
+
+worker:
+	go run ./cmd/worker
 
 build:
 	CGO_ENABLED=0 go build -o bin/server ./cmd/server
+	CGO_ENABLED=0 go build -o bin/worker ./cmd/worker
+	CGO_ENABLED=0 go build -o bin/migrate ./cmd/migrate
+	CGO_ENABLED=0 go build -o bin/avatar-migrate ./cmd/avatar-migrate
+
+migrate:
+	go run ./cmd/migrate
+
+avatar-migrate:
+	go run ./cmd/avatar-migrate
 
 migrate-up:
 	migrate -path migrations -database $(DB_URL) -verbose up
@@ -41,8 +56,8 @@ migrate-create:
 # Regenerate Swagger from // @Router annotations in handlers
 swagger:
 	@command -v swag >/dev/null 2>&1 || { echo "swag not found. Run: make swagger-install"; exit 1; }
-	swag init -g cmd/server/main.go -o docs --parseDependency --parseInternal
-	@echo "Swagger generated: docs/docs.go, docs/swagger.json, docs/swagger.yaml"
+	swag init -g cmd/server/main.go -o docs/openapi --parseDependency --parseInternal --parseGoList=false
+	@echo "Swagger generated: docs/openapi/docs.go, docs/openapi/swagger.json, docs/openapi/swagger.yaml"
 
 swagger-install:
 	go install github.com/swaggo/swag/cmd/swag@latest

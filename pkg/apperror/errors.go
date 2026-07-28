@@ -82,10 +82,32 @@ var (
 
 	ErrOTPExpired     = NewAppError("OTP_EXPIRED", "Không tìm thấy mã OTP hợp lệ hoặc đã hết hạn", http.StatusBadRequest)
 	ErrOTPInvalid     = NewAppError("OTP_INVALID", "Mã OTP không đúng", http.StatusBadRequest)
-	ErrOTPMaxAttempts = NewAppError("OTP_MAX_ATTEMPTS", "Bạn đã nhập sai OTP quá 5 lần, vui lòng yêu cầu mã mới", http.StatusBadRequest)
+	ErrOTPMaxAttempts = NewAppError("OTP_MAX_ATTEMPTS", "Bạn đã nhập sai OTP quá số lần cho phép, vui lòng yêu cầu mã mới", http.StatusBadRequest)
+
+	ErrMFAInvalid = NewAppError(
+		"MFA_INVALID",
+		"Challenge hoặc mã xác thực MFA không hợp lệ",
+		http.StatusUnauthorized,
+	)
+	ErrMFAAlreadyEnabled = NewAppError(
+		"MFA_ALREADY_ENABLED",
+		"MFA đã được bật cho tài khoản",
+		http.StatusConflict,
+	)
+	ErrMFANotEnabled = NewAppError(
+		"MFA_NOT_ENABLED",
+		"MFA chưa được bật cho tài khoản",
+		http.StatusBadRequest,
+	)
+	ErrMFASetupRequired = NewAppError(
+		"MFA_SETUP_REQUIRED",
+		"Chưa có enrollment MFA đang chờ xác nhận",
+		http.StatusBadRequest,
+	)
 
 	ErrFileTooLarge    = NewAppError("FILE_TOO_LARGE", "Dung lượng file vượt quá giới hạn cho phép", http.StatusRequestEntityTooLarge)
 	ErrInvalidFileType = NewAppError("INVALID_FILE_TYPE", "Định dạng file không được hỗ trợ", http.StatusUnsupportedMediaType)
+	ErrRequestTooLarge = NewAppError("REQUEST_TOO_LARGE", "Dữ liệu yêu cầu vượt quá giới hạn cho phép", http.StatusRequestEntityTooLarge)
 
 	ErrRateLimited = NewAppError("RATE_LIMITED", "Bạn thao tác quá nhanh, vui lòng thử lại sau", http.StatusTooManyRequests)
 	ErrIPBanned    = NewAppError("IP_BANNED", "Địa chỉ IP của bạn đã bị khóa tạm thời do phát hiện hành vi spam", http.StatusForbidden)
