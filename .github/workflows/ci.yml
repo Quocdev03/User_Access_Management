@@ -112,6 +112,9 @@ jobs:
       JWT_SECRET: ci-only-jwt-secret
       JWT_ACCESS_EXPIRY: 15m
       JWT_REFRESH_EXPIRY: 168h
+      RATE_LIMIT_WINDOW: "1m"
+      LOCK_DURATION: "30m"
+      OTP_EXPIRY: "5m"
       OTP_PEPPER: ci-only-otp-pepper
       MFA_ISSUER: UAM CI
       MFA_ACTIVE_KEY_VERSION: v1
