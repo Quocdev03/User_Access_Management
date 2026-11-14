@@ -638,33 +638,7 @@
           "name": "Danh sách người dùng (List Users)",
           "request": {
             "method": "GET",
-            "url": {
-              "raw": "{{baseUrl}}/admin/users?page=1&per_page=10&role=admin",
-              "query": [
-                {
-                  "key": "page",
-                  "value": "1"
-                },
-                {
-                  "key": "per_page",
-                  "value": "10"
-                },
-                {
-                  "key": "role",
-                  "value": "admin"
-                },
-                {
-                  "key": "username",
-                  "value": "",
-                  "disabled": true
-                },
-                {
-                  "key": "email",
-                  "value": "",
-                  "disabled": true
-                }
-              ]
-            },
+            "url": "{{baseUrl}}/admin/users?page=1&per_page=10&role=admin",
             "description": "Tìm kiếm, lọc và phân trang danh sách người dùng trong hệ thống."
           }
         },
@@ -866,29 +840,7 @@
           "name": "Xuất Audit Logs (Export Logs CSV / JSON)",
           "request": {
             "method": "GET",
-            "url": {
-              "raw": "{{baseUrl}}/admin/audit-logs/export?format=json&limit=50",
-              "query": [
-                {
-                  "key": "format",
-                  "value": "json"
-                },
-                {
-                  "key": "limit",
-                  "value": "50"
-                },
-                {
-                  "key": "action",
-                  "value": "",
-                  "disabled": true
-                },
-                {
-                  "key": "actor_id",
-                  "value": "",
-                  "disabled": true
-                }
-              ]
-            },
+            "url": "{{baseUrl}}/admin/audit-logs/export?format=json&limit=50",
             "description": "Truy vấn và xuất nhật ký kiểm toán hành vi của hệ thống."
           }
         }

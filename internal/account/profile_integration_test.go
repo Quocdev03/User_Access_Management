@@ -16,7 +16,6 @@ import (
 	"github.com/quocdev03/user-access-management/internal/access"
 	accountapp "github.com/quocdev03/user-access-management/internal/account"
 	"github.com/quocdev03/user-access-management/internal/blob"
-	"github.com/quocdev03/user-access-management/internal/config"
 	"github.com/quocdev03/user-access-management/internal/mysqlstore"
 	"github.com/quocdev03/user-access-management/pkg/database"
 	"github.com/quocdev03/user-access-management/pkg/hash"
