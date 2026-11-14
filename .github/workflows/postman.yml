@@ -60,7 +60,7 @@ jobs:
       RATE_LIMIT_WINDOW: 1m
       LOCK_DURATION: 30m
       OTP_EXPIRY: 5m
-      OTP_PEPPER: ci-otp-pepper-123456
+      OTP_PEPPER: ci-otp-pepper-super-secret-key-32b
       MFA_ISSUER: UAM CI
       MFA_ACTIVE_KEY_VERSION: v1
       MFA_ENCRYPTION_KEYS: v1:ZGV2LW9ubHktbWZhLWtleS0zMi1ieXRlcy0wMDAwMDA=
@@ -86,7 +86,15 @@ jobs:
         run: go run ./cmd/migrate
 
       - name: Bootstrap Initial Admin & Roles
-        run: go run ./cmd/bootstrap-admin
+        env:
+          UAM_BOOTSTRAP_ADMIN_PASSWORD: AdminPassword123!@#
+        run: >-
+          go run ./cmd/bootstrap-admin
+          --username admin
+          --email admin@example.com
+          --full-name "Super Administrator"
+          --phone "0900000000"
+          --date-of-birth "2000-01-01"
 
       - name: Start UAM HTTP Server in Background
         run: |
@@ -97,8 +105,8 @@ jobs:
       - name: Wait for Server Readiness
         run: |
           for i in {1..30}; do
-            if curl -s http://localhost:8080/health | grep -q '"status":"ok"'; then
-              echo "Server is ready!"
+            if curl -f -s http://localhost:8080/health | grep -q '"status":"UP"'; then
+              echo "Server is ready and UP!"
               exit 0
             fi
             echo "Waiting for server to become healthy... ($i/30)"

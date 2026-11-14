@@ -15,7 +15,6 @@ import (
 	"github.com/go-sql-driver/mysql"
 	"github.com/jmoiron/sqlx"
 	authapp "github.com/quocdev03/user-access-management/internal/auth"
-	"github.com/quocdev03/user-access-management/internal/config"
 	mailmessage "github.com/quocdev03/user-access-management/internal/mail"
 	"github.com/quocdev03/user-access-management/internal/mysqlstore"
 	"github.com/quocdev03/user-access-management/pkg/apperror"

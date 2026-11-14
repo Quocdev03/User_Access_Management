@@ -1,14 +1,13 @@
 version: 2
 updates:
-  # Tự động cập nhật Go Modules
+  # Tự động cập nhật riêng lẻ từng Go Module (mở tối đa 100 PRs, kiểm tra hàng ngày)
   - package-ecosystem: "gomod"
     directory: "/"
     schedule:
-      interval: "weekly"
-      day: "monday"
+      interval: "daily"
       time: "03:00"
       timezone: "Asia/Ho_Chi_Minh"
-    open-pull-requests-limit: 10
+    open-pull-requests-limit: 100
     rebase-strategy: "auto"
     commit-message:
       prefix: "build(deps)"
@@ -16,25 +15,15 @@ updates:
     labels:
       - "dependencies"
       - "go"
-    groups:
-      go-dependencies:
-        patterns:
-          - "*"
-        exclude-patterns:
-          - "golang.org/x/*"
-      golang-x-libraries:
-        patterns:
-          - "golang.org/x/*"
 
-  # Tự động cập nhật GitHub Actions Workflows
+  # Tự động cập nhật riêng lẻ từng GitHub Action Workflow
   - package-ecosystem: "github-actions"
     directory: "/"
     schedule:
-      interval: "weekly"
-      day: "monday"
+      interval: "daily"
       time: "03:30"
       timezone: "Asia/Ho_Chi_Minh"
-    open-pull-requests-limit: 10
+    open-pull-requests-limit: 100
     rebase-strategy: "auto"
     commit-message:
       prefix: "build(actions)"
@@ -42,19 +31,15 @@ updates:
     labels:
       - "dependencies"
       - "github-actions"
-    groups:
-      actions:
-        patterns:
-          - "*"
 
   # Tự động cập nhật base image trong Dockerfile
   - package-ecosystem: "docker"
     directory: "/"
     schedule:
-      interval: "monthly"
+      interval: "weekly"
       time: "04:00"
       timezone: "Asia/Ho_Chi_Minh"
-    open-pull-requests-limit: 5
+    open-pull-requests-limit: 50
     commit-message:
       prefix: "build(docker)"
       include: "scope"
