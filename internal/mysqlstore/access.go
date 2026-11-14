@@ -1,3 +1,4 @@
+// Package mysqlstore triển khai các query và command MySQL cho domain use case.
 package mysqlstore
 
 import (
@@ -14,6 +15,9 @@ import (
 	"github.com/quocdev03/user-access-management/pkg/apperror"
 )
 
+// File này thực hiện query và command MySQL cho role, permission và admin user.
+
+// AccessUser ánh xạ bản ghi người dùng cùng thông tin hồ sơ và trạng thái từ MySQL.
 type AccessUser struct {
 	ID              uint64    `db:"id"`
 	Username        string    `db:"username"`
@@ -27,6 +31,7 @@ type AccessUser struct {
 	CreatedAt       time.Time `db:"created_at"`
 }
 
+// AccessUserFilter chứa các điều kiện lọc và phân trang khi truy vấn danh sách người dùng trong MySQL.
 type AccessUserFilter struct {
 	Username string
 	Email    string
@@ -39,6 +44,7 @@ type AccessUserFilter struct {
 	Now      time.Time
 }
 
+// AccessRole ánh xạ bản ghi vai trò trong bảng roles.
 type AccessRole struct {
 	ID          uint64    `db:"id"`
 	Name        string    `db:"name"`
@@ -47,6 +53,7 @@ type AccessRole struct {
 	CreatedAt   time.Time `db:"created_at"`
 }
 
+// AccessPermission ánh xạ bản ghi quyền hạn trong bảng permissions.
 type AccessPermission struct {
 	ID          uint64  `db:"id"`
 	Name        string  `db:"name"`
@@ -55,6 +62,7 @@ type AccessPermission struct {
 	Action      string  `db:"action"`
 }
 
+// LockedAccountState chứa snapshot trạng thái tài khoản đọc với FOR UPDATE để kiểm tra concurrency.
 type LockedAccountState struct {
 	ID                     uint64                 `db:"id"`
 	Lifecycle              accountstate.Lifecycle `db:"lifecycle_state"`
@@ -66,6 +74,7 @@ type LockedAccountState struct {
 	AuthVersion            uint64                 `db:"auth_version"`
 }
 
+// State chuyển account row thành canonical state để domain policy xử lý.
 func (a LockedAccountState) State() (accountstate.State, error) {
 	state := accountstate.State{
 		Lifecycle:              a.Lifecycle,
@@ -82,14 +91,17 @@ func (a LockedAccountState) State() (accountstate.State, error) {
 	return state, nil
 }
 
+// AccessStore quản lý các thao tác truy vấn và cập nhật dữ liệu quyền truy cập, vai trò và người dùng trong MySQL.
 type AccessStore struct {
 	db *sqlx.DB
 }
 
+// NewAccessStore khởi tạo AccessStore với các dependency được cung cấp.
 func NewAccessStore(db *sqlx.DB) *AccessStore {
 	return &AccessStore{db: db}
 }
 
+// ListUsers liệt kê người dùng tại MySQL adapter và giữ mapping persistence khỏi domain.
 func (s *AccessStore) ListUsers(
 	ctx context.Context,
 	filter AccessUserFilter,
@@ -166,6 +178,7 @@ func (s *AccessStore) ListUsers(
 	return users, total, nil
 }
 
+// FindUser truy vấn người dùng tại MySQL adapter và giữ mapping persistence khỏi domain.
 func (s *AccessStore) FindUser(ctx context.Context, userID uint64, now time.Time) (*AccessUser, error) {
 	var user AccessUser
 	err := executor(ctx, s.db).GetContext(ctx, &user, `
@@ -194,6 +207,7 @@ func (s *AccessStore) FindUser(ctx context.Context, userID uint64, now time.Time
 	return &user, nil
 }
 
+// RoleNamesByUserID truy vấn tên role của một người dùng.
 func (s *AccessStore) RoleNamesByUserID(ctx context.Context, userID uint64) ([]string, error) {
 	roles := []string{}
 	if err := executor(ctx, s.db).SelectContext(ctx, &roles, `
@@ -209,6 +223,7 @@ func (s *AccessStore) RoleNamesByUserID(ctx context.Context, userID uint64) ([]s
 	return roles, nil
 }
 
+// RoleNamesByUserIDs truy vấn tên role cho nhiều người dùng trong một lần đọc.
 func (s *AccessStore) RoleNamesByUserIDs(
 	ctx context.Context,
 	userIDs []uint64,
@@ -228,6 +243,7 @@ func (s *AccessStore) RoleNamesByUserIDs(
 	if err != nil {
 		return nil, fmt.Errorf("build user-role query: %w", err)
 	}
+	// userRole ánh xạ kết quả truy vấn liên kết giữa người dùng và vai trò.
 	type userRole struct {
 		UserID uint64 `db:"user_id"`
 		Name   string `db:"name"`
@@ -242,6 +258,7 @@ func (s *AccessStore) RoleNamesByUserIDs(
 	return result, nil
 }
 
+// HasPermission kiểm tra permission tại MySQL adapter và giữ mapping persistence khỏi domain.
 func (s *AccessStore) HasPermission(
 	ctx context.Context,
 	userID uint64,
@@ -273,6 +290,7 @@ func (s *AccessStore) HasPermission(
 	return allowed, nil
 }
 
+// LockAdminRole khóa quản trị role tại MySQL adapter và giữ mapping persistence khỏi domain.
 func (s *AccessStore) LockAdminRole(ctx context.Context) (*AccessRole, error) {
 	if !inTransaction(ctx) {
 		return nil, fmt.Errorf("admin role lock requires a MySQL transaction")
@@ -280,6 +298,7 @@ func (s *AccessStore) LockAdminRole(ctx context.Context) (*AccessRole, error) {
 	return s.findRole(ctx, `name = 'admin' AND is_system = TRUE`, nil, true)
 }
 
+// LockRoleByID khóa role theo ID tại MySQL adapter và giữ mapping persistence khỏi domain.
 func (s *AccessStore) LockRoleByID(ctx context.Context, roleID uint64) (*AccessRole, error) {
 	if !inTransaction(ctx) {
 		return nil, fmt.Errorf("role lock requires a MySQL transaction")
@@ -287,14 +306,17 @@ func (s *AccessStore) LockRoleByID(ctx context.Context, roleID uint64) (*AccessR
 	return s.findRole(ctx, `id = ?`, []any{roleID}, true)
 }
 
+// FindRoleByID truy vấn role theo ID tại MySQL adapter và giữ mapping persistence khỏi domain.
 func (s *AccessStore) FindRoleByID(ctx context.Context, roleID uint64) (*AccessRole, error) {
 	return s.findRole(ctx, `id = ?`, []any{roleID}, false)
 }
 
+// FindRoleByName truy vấn role theo tên tại MySQL adapter và giữ mapping persistence khỏi domain.
 func (s *AccessStore) FindRoleByName(ctx context.Context, name string) (*AccessRole, error) {
 	return s.findRole(ctx, `name = ?`, []any{name}, false)
 }
 
+// findRole truy vấn role tại MySQL adapter và giữ mapping persistence khỏi domain.
 func (s *AccessStore) findRole(
 	ctx context.Context,
 	where string,
@@ -317,6 +339,7 @@ func (s *AccessStore) findRole(
 	return &role, nil
 }
 
+// ListRoles liệt kê role tại MySQL adapter và giữ mapping persistence khỏi domain.
 func (s *AccessStore) ListRoles(ctx context.Context) ([]AccessRole, error) {
 	roles := []AccessRole{}
 	if err := executor(ctx, s.db).SelectContext(ctx, &roles, `
@@ -329,6 +352,7 @@ func (s *AccessStore) ListRoles(ctx context.Context) ([]AccessRole, error) {
 	return roles, nil
 }
 
+// PermissionsByRoleIDs truy vấn tập permission được gán cho các role.
 func (s *AccessStore) PermissionsByRoleIDs(
 	ctx context.Context,
 	roleIDs []uint64,
@@ -348,6 +372,7 @@ func (s *AccessStore) PermissionsByRoleIDs(
 	if err != nil {
 		return nil, fmt.Errorf("build role-permission query: %w", err)
 	}
+	// rolePermission ánh xạ kết quả truy vấn liên kết giữa vai trò và quyền hạn.
 	type rolePermission struct {
 		RoleID uint64 `db:"role_id"`
 		AccessPermission
@@ -362,6 +387,7 @@ func (s *AccessStore) PermissionsByRoleIDs(
 	return result, nil
 }
 
+// CreateRole tạo role tại MySQL adapter và giữ mapping persistence khỏi domain.
 func (s *AccessStore) CreateRole(
 	ctx context.Context,
 	name string,
@@ -383,6 +409,7 @@ func (s *AccessStore) CreateRole(
 	return uint64(id), nil
 }
 
+// UpdateRole cập nhật role tại MySQL adapter và giữ mapping persistence khỏi domain.
 func (s *AccessStore) UpdateRole(
 	ctx context.Context,
 	roleID uint64,
@@ -403,6 +430,7 @@ func (s *AccessStore) UpdateRole(
 	return requireOneRow(result, "update access role")
 }
 
+// DeleteRole xóa role tại MySQL adapter và giữ mapping persistence khỏi domain.
 func (s *AccessStore) DeleteRole(ctx context.Context, roleID uint64) error {
 	result, err := executor(ctx, s.db).ExecContext(
 		ctx,
@@ -415,6 +443,7 @@ func (s *AccessStore) DeleteRole(ctx context.Context, roleID uint64) error {
 	return requireOneRow(result, "delete access role")
 }
 
+// LockUserRoleIDs khóa người dùng role ID tại MySQL adapter và giữ mapping persistence khỏi domain.
 func (s *AccessStore) LockUserRoleIDs(ctx context.Context, userID uint64) ([]uint64, error) {
 	if !inTransaction(ctx) {
 		return nil, fmt.Errorf("user-role lock requires a MySQL transaction")
@@ -433,6 +462,7 @@ func (s *AccessStore) LockUserRoleIDs(ctx context.Context, userID uint64) ([]uin
 	return roleIDs, nil
 }
 
+// LockUserIDsByRole khóa người dùng ID theo role tại MySQL adapter và giữ mapping persistence khỏi domain.
 func (s *AccessStore) LockUserIDsByRole(ctx context.Context, roleID uint64) ([]uint64, error) {
 	if !inTransaction(ctx) {
 		return nil, fmt.Errorf("role assignments lock requires a MySQL transaction")
@@ -451,6 +481,7 @@ func (s *AccessStore) LockUserIDsByRole(ctx context.Context, roleID uint64) ([]u
 	return userIDs, nil
 }
 
+// LockAccountStates khóa account state của các user bị tác động trước mutation RBAC.
 func (s *AccessStore) LockAccountStates(
 	ctx context.Context,
 	userIDs []uint64,
@@ -486,6 +517,7 @@ func (s *AccessStore) LockAccountStates(
 	return accounts, nil
 }
 
+// CountRoleAssignments đếm số user đang giữ role để bảo vệ thao tác xóa.
 func (s *AccessStore) CountRoleAssignments(ctx context.Context, roleID uint64) (int64, error) {
 	var count int64
 	if err := executor(ctx, s.db).GetContext(
@@ -499,6 +531,7 @@ func (s *AccessStore) CountRoleAssignments(ctx context.Context, roleID uint64) (
 	return count, nil
 }
 
+// CountPermissionsByIDs xác nhận toàn bộ permission ID đầu vào tồn tại.
 func (s *AccessStore) CountPermissionsByIDs(ctx context.Context, ids []uint64) (int, error) {
 	if len(ids) == 0 {
 		return 0, nil
@@ -519,6 +552,7 @@ func (s *AccessStore) CountPermissionsByIDs(ctx context.Context, ids []uint64) (
 	return count, nil
 }
 
+// ReplaceRolePermissions thay thế role permission tại MySQL adapter và giữ mapping persistence khỏi domain.
 func (s *AccessStore) ReplaceRolePermissions(
 	ctx context.Context,
 	roleID uint64,
@@ -551,6 +585,7 @@ func (s *AccessStore) ReplaceRolePermissions(
 	return nil
 }
 
+// AssignRole gán role tại MySQL adapter và giữ mapping persistence khỏi domain.
 func (s *AccessStore) AssignRole(ctx context.Context, userID, roleID uint64) error {
 	_, err := executor(ctx, s.db).ExecContext(ctx, `
 		INSERT INTO user_roles (user_id, role_id, assigned_at)
@@ -564,6 +599,7 @@ func (s *AccessStore) AssignRole(ctx context.Context, userID, roleID uint64) err
 	return nil
 }
 
+// RemoveRole gỡ role tại MySQL adapter và giữ mapping persistence khỏi domain.
 func (s *AccessStore) RemoveRole(ctx context.Context, userID, roleID uint64) error {
 	result, err := executor(ctx, s.db).ExecContext(ctx, `
 		DELETE FROM user_roles
@@ -577,6 +613,7 @@ func (s *AccessStore) RemoveRole(ctx context.Context, userID, roleID uint64) err
 	return requireOneRow(result, "remove user role")
 }
 
+// mapAccessWriteError chuyển lỗi constraint đã biết thành business error ổn định.
 func mapAccessWriteError(err error) error {
 	var mysqlErr *mysql.MySQLError
 	if errors.As(err, &mysqlErr) && mysqlErr.Number == 1062 {

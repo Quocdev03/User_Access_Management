@@ -1,6 +1,8 @@
+// Package hash cung cấp primitive băm mật khẩu và OTP cho các use case bảo mật.
 package hash
 
 import (
+	"crypto/hmac"
 	"crypto/rand"
 	"crypto/sha256"
 	"encoding/hex"
@@ -9,6 +11,8 @@ import (
 
 	"golang.org/x/crypto/bcrypt"
 )
+
+// File này băm, so sánh và kiểm tra password hoặc OTP an toàn.
 
 const (
 	minPasswordLength = 8
@@ -19,21 +23,24 @@ const (
 	specialChars = "!@#$%^&*()-_=+[]{}<>?"
 )
 
-// DummyPasswordHash is a real bcrypt hash of "dummy-password" for timing equalization
-// when a user/email does not exist (must be a valid bcrypt string).
+// DummyPasswordHash là bcrypt hash hợp lệ dùng để cân bằng timing khi tài khoản không tồn tại.
 const DummyPasswordHash = "$2a$10$IPzDZM5LbI2XJynYGwn0tepKOFLr0HNzTD6PCPRUzeu3yWfDZGk.G"
 
+// SHA256 trả digest hex cho dữ liệu không cần password-hardening.
 func SHA256(data string) string {
 	h := sha256.New()
 	h.Write([]byte(data))
 	return hex.EncodeToString(h.Sum(nil))
 }
 
-// HashOTP returns SHA-256 hex of otp+pepper for storage (never store OTP plaintext).
+// HashOTP băm OTP cùng pepper bằng HMAC-SHA256 để không lưu OTP plaintext.
 func HashOTP(otp, pepper string) string {
-	return SHA256(otp + pepper)
+	mac := hmac.New(sha256.New, []byte(pepper))
+	mac.Write([]byte(otp))
+	return hex.EncodeToString(mac.Sum(nil))
 }
 
+// HashPassword băm mật khẩu bằng primitive phù hợp với dữ liệu xác thực.
 func HashPassword(password string) (string, error) {
 	if len([]byte(password)) > 72 {
 		return "", errors.New("mật khẩu vượt quá giới hạn 72 bytes của bcrypt")
@@ -47,10 +54,12 @@ func HashPassword(password string) (string, error) {
 	return string(hash), nil
 }
 
+// CheckPassword kiểm tra mật khẩu bằng primitive phù hợp với dữ liệu xác thực.
 func CheckPassword(password, hash string) bool {
 	return bcrypt.CompareHashAndPassword([]byte(hash), []byte(password)) == nil
 }
 
+// ValidatePasswordComplexity kiểm tra mật khẩu Complexity bằng primitive phù hợp với dữ liệu xác thực.
 func ValidatePasswordComplexity(password string) error {
 	if len(password) < minPasswordLength {
 		return errors.New("mật khẩu phải có tối thiểu 8 ký tự")
@@ -83,7 +92,7 @@ func ValidatePasswordComplexity(password string) error {
 	return nil
 }
 
-// ValidateNewPassword checks complexity and bcrypt's 72-byte limit.
+// ValidateNewPassword kiểm tra độ phức tạp và giới hạn 72 byte của bcrypt trước khi băm.
 func ValidateNewPassword(password string) error {
 	if err := ValidatePasswordComplexity(password); err != nil {
 		return err
@@ -94,6 +103,7 @@ func ValidateNewPassword(password string) error {
 	return nil
 }
 
+// GenerateResetToken tạo đặt lại token bằng primitive phù hợp với dữ liệu xác thực.
 func GenerateResetToken() (string, error) {
 	value := make([]byte, 32)
 	if _, err := rand.Read(value); err != nil {

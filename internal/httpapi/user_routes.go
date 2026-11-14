@@ -8,6 +8,9 @@ import (
 	"github.com/quocdev03/user-access-management/pkg/validator"
 )
 
+// File này đăng ký route hồ sơ, email, avatar và session của người dùng.
+
+// setupUserRoutes gắn profile, email, avatar và session routes sau authentication.
 func setupUserRoutes(
 	rg *gin.RouterGroup,
 	userHandler *UserHandler,
@@ -16,11 +19,12 @@ func setupUserRoutes(
 	metrics *HTTPMetrics,
 	banDuration time.Duration,
 ) {
-	users := rg.Group("/users", authMiddleware)
-	users.GET("/me", userHandler.GetProfile)
+	users := rg.Group("/users")
+	users.GET("/me", authMiddleware, userHandler.GetProfile)
 	users.PATCH(
 		"/me",
 		validator.ValidateJSON[UpdateProfileRequest](),
+		authMiddleware,
 		userHandler.UpdateProfile,
 	)
 	emailRateLimit := RateLimitMiddleware(
@@ -37,17 +41,20 @@ func setupUserRoutes(
 		"/me/email/change-request",
 		validator.ValidateJSON[RequestEmailChangeRequest](),
 		emailRateLimit,
+		authMiddleware,
 		userHandler.RequestEmailChange,
 	)
 	users.POST(
 		"/me/email/verify",
 		validator.ValidateJSON[VerifyEmailChangeRequest](),
 		emailRateLimit,
+		authMiddleware,
 		userHandler.VerifyEmailChange,
 	)
 	users.POST(
 		"/me/email/resend",
 		emailRateLimit,
+		authMiddleware,
 		userHandler.ResendChangeEmailOTP,
 	)
 
@@ -63,12 +70,13 @@ func setupUserRoutes(
 			time.Minute,
 			banDuration,
 		),
+		authMiddleware,
 		userHandler.UploadAvatar,
 	)
 
-	users.DELETE("/me/avatar", userHandler.DeleteAvatar)
+	users.DELETE("/me/avatar", authMiddleware, userHandler.DeleteAvatar)
 
-	users.GET("/me/sessions", userHandler.GetSessions)
-	users.DELETE("/me/sessions/:id", userHandler.RevokeSession)
-	users.GET("/me/devices", userHandler.GetDevices)
+	users.GET("/me/sessions", authMiddleware, userHandler.GetSessions)
+	users.DELETE("/me/sessions/:id", authMiddleware, userHandler.RevokeSession)
+	users.GET("/me/devices", authMiddleware, userHandler.GetDevices)
 }

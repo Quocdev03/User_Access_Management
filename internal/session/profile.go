@@ -10,10 +10,13 @@ import (
 	"github.com/ua-parser/uap-go/uaparser"
 )
 
+// File này chuẩn hóa observed client profile từ request metadata.
+
 var userAgentParser = sync.OnceValue(func() *uaparser.Parser {
 	return uaparser.NewFromSaved()
 })
 
+// ClientProfileView biểu diễn thông tin thiết bị đã đăng nhập khi hiển thị danh sách thiết bị cho người dùng.
 type ClientProfileView struct {
 	ID           uint64
 	DeviceName   *string
@@ -24,6 +27,7 @@ type ClientProfileView struct {
 	LastActiveAt *time.Time
 }
 
+// NormalizeRequestMeta giới hạn IP và user-agent trước khi lưu observed client data.
 func NormalizeRequestMeta(ipAddress, userAgent string) (string, string) {
 	if len(ipAddress) > 45 {
 		ipAddress = ipAddress[:45]
@@ -34,6 +38,7 @@ func NormalizeRequestMeta(ipAddress, userAgent string) (string, string) {
 	return ipAddress, userAgent
 }
 
+// ListClientProfiles liệt kê client hồ sơ trong vòng đời session.
 func (m *Manager) ListClientProfiles(
 	ctx context.Context,
 	userID uint64,
@@ -57,6 +62,7 @@ func (m *Manager) ListClientProfiles(
 	return result, nil
 }
 
+// observedClientProfile tạo fingerprint ổn định từ metadata client đã chuẩn hóa.
 func observedClientProfile(
 	userID uint64,
 	ipAddress string,
@@ -76,6 +82,7 @@ func observedClientProfile(
 	return profile
 }
 
+// parseUserAgent suy ra browser, OS và device class từ user-agent đã giới hạn.
 func parseUserAgent(userAgent string) (osName, browser, deviceType string) {
 	if strings.TrimSpace(userAgent) == "" {
 		return "Unknown", "Unknown", "desktop"
@@ -93,6 +100,7 @@ func parseUserAgent(userAgent string) (osName, browser, deviceType string) {
 	return osName, browser, mapDeviceType(client)
 }
 
+// mapDeviceType gom user-agent device class về tập giá trị persistence cho phép.
 func mapDeviceType(client *uaparser.Client) string {
 	if client == nil || client.Device == nil {
 		return "desktop"

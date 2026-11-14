@@ -17,33 +17,40 @@ import (
 	"github.com/quocdev03/user-access-management/pkg/hash"
 )
 
+// File này điều phối yêu cầu và xác minh đổi email bằng durable outbox.
+
 const (
 	emailChangeOldPurpose = "change_email_old"
 	emailChangeNewPurpose = "change_email_new"
 )
 
+// EmailPolicy định nghĩa chính sách thời gian hết hạn và số lần thử tối đa khi xác thực OTP đổi email.
 type EmailPolicy struct {
 	Expiry      time.Duration
 	MaxAttempts int
 }
 
+// EmailMetadata chứa thông tin địa chỉ IP và User-Agent khi thực hiện yêu cầu đổi email.
 type EmailMetadata struct {
 	IPAddress string
 	UserAgent string
 }
 
+// RequestEmailChangeCommand chứa thông tin tham số để khởi tạo yêu cầu thay đổi email của người dùng.
 type RequestEmailChangeCommand struct {
 	CurrentPassword string
 	NewEmail        string
 	Metadata        EmailMetadata
 }
 
+// VerifyEmailChangeCommand chứa các mã OTP xác minh gửi đến cả email cũ và email mới để hoàn tất đổi email.
 type VerifyEmailChangeCommand struct {
 	OldOTP   string
 	NewOTP   string
 	Metadata EmailMetadata
 }
 
+// Email quản lý toàn bộ quy trình yêu cầu, xác minh OTP kép và cập nhật email người dùng.
 type Email struct {
 	accounts    *mysqlstore.AccountStore
 	requests    *mysqlstore.EmailChangeStore
@@ -58,6 +65,7 @@ type Email struct {
 	policy      EmailPolicy
 }
 
+// NewEmail khởi tạo Email với các dependency được cung cấp.
 func NewEmail(
 	db *sqlx.DB,
 	accounts *mysqlstore.AccountStore,
@@ -92,6 +100,7 @@ func NewEmail(
 	}
 }
 
+// Request tạo email-change challenge và durable verification email trong transaction.
 func (e *Email) Request(
 	ctx context.Context,
 	userID uint64,
@@ -173,6 +182,7 @@ func (e *Email) Request(
 	})
 }
 
+// Resend thay challenge cũ bằng OTP mới và durable outbox event.
 func (e *Email) Resend(ctx context.Context, userID uint64) error {
 	oldOTP, newOTP, err := generateEmailChangeOTPs()
 	if err != nil {
@@ -241,6 +251,7 @@ func (e *Email) Resend(ctx context.Context, userID uint64) error {
 	return businessError
 }
 
+// Verify consume challenge, đổi email và vô hiệu hóa auth state trong cùng transaction.
 func (e *Email) Verify(
 	ctx context.Context,
 	userID uint64,
@@ -316,15 +327,23 @@ func (e *Email) Verify(
 			[]byte(oldChallenge.SecretHash),
 			[]byte(hash.HashOTP(command.OldOTP, e.pepper)),
 		) != 1 {
-			businessError, err = e.recordFailedOTP(txCtx, oldChallenge.ID)
-			return err
+			res, err := e.recordFailedOTP(txCtx, oldChallenge.ID)
+			if err != nil {
+				return err
+			}
+			businessError = res.BusinessError
+			return nil
 		}
 		if subtle.ConstantTimeCompare(
 			[]byte(newChallenge.SecretHash),
 			[]byte(hash.HashOTP(command.NewOTP, e.pepper)),
 		) != 1 {
-			businessError, err = e.recordFailedOTP(txCtx, newChallenge.ID)
-			return err
+			res, err := e.recordFailedOTP(txCtx, newChallenge.ID)
+			if err != nil {
+				return err
+			}
+			businessError = res.BusinessError
+			return nil
 		}
 		existing, err := e.accounts.FindByEmail(txCtx, request.NewEmail)
 		if err != nil {
@@ -388,9 +407,9 @@ func (e *Email) Verify(
 		); err != nil {
 			return err
 		}
-		payload, err := e.codec.Seal(mail.SecretMessage{
-			To:     request.OldEmail,
-			Secret: request.NewEmail,
+		payload, err := e.codec.SealEmailChangeNotification(mail.EmailChangeNotification{
+			OldEmail: request.OldEmail,
+			NewEmail: request.NewEmail,
 		})
 		if err != nil {
 			return err
@@ -411,6 +430,7 @@ func (e *Email) Verify(
 	return businessError
 }
 
+// issueInTx tạo challenge và outbox event trong transaction do caller sở hữu.
 func (e *Email) issueInTx(
 	ctx context.Context,
 	userID uint64,
@@ -462,6 +482,7 @@ func (e *Email) issueInTx(
 	)
 }
 
+// createChallengeAndDelivery hủy yêu cầu cũ rồi ghi challenge cùng durable email mới.
 func (e *Email) createChallengeAndDelivery(
 	ctx context.Context,
 	emailChangeRequestID string,
@@ -502,6 +523,7 @@ func (e *Email) createChallengeAndDelivery(
 	})
 }
 
+// cancelInTx hủy challenge và outbox event đang pending trong transaction hiện tại.
 func (e *Email) cancelInTx(
 	ctx context.Context,
 	userID uint64,
@@ -513,17 +535,31 @@ func (e *Email) cancelInTx(
 	return e.requests.CancelActiveByUser(ctx, userID, now)
 }
 
-func (e *Email) recordFailedOTP(ctx context.Context, challengeID uint64) (error, error) {
-	attempts, err := e.challenges.IncrementAttempts(ctx, challengeID)
-	if err != nil {
-		return nil, err
-	}
-	if attempts >= e.policy.MaxAttempts {
-		return apperror.ErrOTPMaxAttempts, nil
-	}
-	return apperror.ErrOTPInvalid, nil
+// OTPAttemptResult chứa kết quả phân tích số lần nhập OTP thất bại.
+type OTPAttemptResult struct {
+	ExceededMaxAttempts bool
+	BusinessError       error
 }
 
+// recordFailedOTP tăng số lần sai và trả về kết quả kiểm tra ngưỡng thất bại của challenge.
+func (e *Email) recordFailedOTP(ctx context.Context, challengeID uint64) (OTPAttemptResult, error) {
+	attempts, err := e.challenges.IncrementAttempts(ctx, challengeID)
+	if err != nil {
+		return OTPAttemptResult{}, err
+	}
+	if attempts >= e.policy.MaxAttempts {
+		return OTPAttemptResult{
+			ExceededMaxAttempts: true,
+			BusinessError:       apperror.ErrOTPMaxAttempts,
+		}, nil
+	}
+	return OTPAttemptResult{
+		ExceededMaxAttempts: false,
+		BusinessError:       apperror.ErrOTPInvalid,
+	}, nil
+}
+
+// audit ghi email-change event theo best effort và cảnh báo khi store thất bại.
 func (e *Email) audit(
 	ctx context.Context,
 	userID uint64,
@@ -545,6 +581,7 @@ func (e *Email) audit(
 	})
 }
 
+// generateEmailChangeOTPs tạo email thay đổi OTP trong account use case.
 func generateEmailChangeOTPs() (string, string, error) {
 	oldOTP, err := generateEmailChangeOTP()
 	if err != nil {
@@ -557,6 +594,7 @@ func generateEmailChangeOTPs() (string, string, error) {
 	return oldOTP, newOTP, nil
 }
 
+// generateEmailChangeOTP tạo email thay đổi OTP trong account use case.
 func generateEmailChangeOTP() (string, error) {
 	value, err := rand.Int(rand.Reader, big.NewInt(1000000))
 	if err != nil {
@@ -565,12 +603,14 @@ func generateEmailChangeOTP() (string, error) {
 	return fmt.Sprintf("%06d", value.Int64()), nil
 }
 
+// noPendingEmailChange tạo business error khi tài khoản không có yêu cầu đổi email.
 func noPendingEmailChange() error {
 	return apperror.ErrBadRequest.WithMessage(
 		"Không có yêu cầu đổi email nào đang chờ xử lý hoặc đã hết hạn",
 	)
 }
 
+// staleEmailChange tạo conflict khi account state đã đổi sau lúc challenge được phát hành.
 func staleEmailChange() error {
 	return apperror.ErrBadRequest.WithMessage(
 		"Yêu cầu đổi email không còn hợp lệ vì trạng thái tài khoản đã thay đổi. Vui lòng tạo yêu cầu mới",

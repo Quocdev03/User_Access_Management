@@ -11,12 +11,15 @@ import (
 	"github.com/quocdev03/user-access-management/pkg/apperror"
 )
 
+// File này lưu email-change challenge trong MySQL transaction.
+
 const (
 	EmailChangePending   = "pending"
 	EmailChangeCompleted = "completed"
 	EmailChangeCancelled = "cancelled"
 )
 
+// EmailChangeRequest ánh xạ bản ghi yêu cầu thay đổi email trong bảng email_change_requests.
 type EmailChangeRequest struct {
 	ID                  string     `db:"id"`
 	UserID              uint64     `db:"user_id"`
@@ -30,14 +33,17 @@ type EmailChangeRequest struct {
 	CreatedAt           time.Time  `db:"created_at"`
 }
 
+// EmailChangeStore quản lý việc tạo, truy vấn, cập nhật và dọn dẹp các yêu cầu đổi email trong MySQL.
 type EmailChangeStore struct {
 	db *sqlx.DB
 }
 
+// NewEmailChangeStore khởi tạo EmailChangeStore với các dependency được cung cấp.
 func NewEmailChangeStore(db *sqlx.DB) *EmailChangeStore {
 	return &EmailChangeStore{db: db}
 }
 
+// DeleteExpiredBatch xóa expired batch tại MySQL adapter và giữ mapping persistence khỏi domain.
 func (s *EmailChangeStore) DeleteExpiredBatch(
 	ctx context.Context,
 	threshold time.Time,
@@ -64,6 +70,7 @@ func (s *EmailChangeStore) DeleteExpiredBatch(
 	return rows, nil
 }
 
+// Create lưu email-change challenge trong transaction hiện tại.
 func (s *EmailChangeStore) Create(
 	ctx context.Context,
 	request *EmailChangeRequest,
@@ -88,6 +95,7 @@ func (s *EmailChangeStore) Create(
 	return nil
 }
 
+// FindPendingForUpdate truy vấn pending cho cập nhật và khóa bản ghi trong transaction hiện tại để tránh lost update.
 func (s *EmailChangeStore) FindPendingForUpdate(
 	ctx context.Context,
 	userID uint64,
@@ -113,6 +121,7 @@ func (s *EmailChangeStore) FindPendingForUpdate(
 	return &request, nil
 }
 
+// CancelActiveByUser hủy mọi email-change challenge còn hiệu lực của user trong transaction.
 func (s *EmailChangeStore) CancelActiveByUser(
 	ctx context.Context,
 	userID uint64,
@@ -149,6 +158,7 @@ func (s *EmailChangeStore) CancelActiveByUser(
 	return nil
 }
 
+// Complete consume email-change challenge sau khi account mutation thành công.
 func (s *EmailChangeStore) Complete(
 	ctx context.Context,
 	requestID string,

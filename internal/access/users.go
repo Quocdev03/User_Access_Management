@@ -17,6 +17,9 @@ import (
 	"github.com/quocdev03/user-access-management/pkg/hash"
 )
 
+// File này điều phối các mutation quản trị người dùng và hệ quả lên session.
+
+// UserListQuery chứa các tham số tìm kiếm, lọc và phân trang danh sách người dùng cho quản trị viên.
 type UserListQuery struct {
 	Username  string
 	Email     string
@@ -28,6 +31,7 @@ type UserListQuery struct {
 	PerPage   int
 }
 
+// User đại diện cho thông tin tài khoản người dùng đầy đủ trong ngữ cảnh quản trị.
 type User struct {
 	ID            uint64
 	Username      string
@@ -42,6 +46,7 @@ type User struct {
 	CreatedAt     time.Time
 }
 
+// UserPage đóng gói danh sách người dùng cùng metadata phân trang kết quả tìm kiếm.
 type UserPage struct {
 	Users      []User
 	Page       int
@@ -50,18 +55,20 @@ type UserPage struct {
 	TotalPages int
 }
 
+// UpdateUserCommand chứa dữ liệu cập nhật thông tin người dùng do quản trị viên thực hiện.
 type UpdateUserCommand struct {
-	ActorID       uint64
-	TargetID      uint64
-	FullName      *string
-	Phone         *string
-	Email         *string
-	EmailVerified *bool
-	DateOfBirth   *string
-	AvatarURL     *string
-	Metadata      Metadata
+	ActorID         uint64
+	TargetID        uint64
+	FullName        *string
+	Phone           *string
+	Email           *string
+	EmailVerified   *bool
+	DateOfBirth     *string
+	AvatarObjectKey *string
+	Metadata        Metadata
 }
 
+// ChangeStatusCommand chứa tham số thay đổi trạng thái hoạt động của tài khoản người dùng.
 type ChangeStatusCommand struct {
 	ActorID  uint64
 	TargetID uint64
@@ -69,12 +76,14 @@ type ChangeStatusCommand struct {
 	Metadata Metadata
 }
 
+// ResetPasswordCommand chứa tham số yêu cầu đặt lại mật khẩu người dùng do quản trị viên khởi tạo.
 type ResetPasswordCommand struct {
 	ActorID  uint64
 	TargetID uint64
 	Metadata Metadata
 }
 
+// NotifyUserCommand chứa nội dung thông báo gửi tới người dùng thông qua outbox mail.
 type NotifyUserCommand struct {
 	ActorID  uint64
 	TargetID uint64
@@ -83,6 +92,7 @@ type NotifyUserCommand struct {
 	Metadata Metadata
 }
 
+// Users cung cấp các use case quản lý thông tin, trạng thái và bảo mật người dùng cho quản trị viên.
 type Users struct {
 	access       *mysqlstore.AccessStore
 	accounts     *mysqlstore.AccountStore
@@ -99,6 +109,7 @@ type Users struct {
 	resetExpiry  time.Duration
 }
 
+// NewUsers khởi tạo Users với các dependency được cung cấp.
 func NewUsers(
 	db *sqlx.DB,
 	accessStore *mysqlstore.AccessStore,
@@ -133,6 +144,7 @@ func NewUsers(
 	}
 }
 
+// List trả danh sách người dùng đã áp dụng filter và pagination của quản trị viên.
 func (u *Users) List(ctx context.Context, query UserListQuery) (UserPage, error) {
 	if query.Page < 1 {
 		query.Page = 1
@@ -166,8 +178,8 @@ func (u *Users) List(ctx context.Context, query UserListQuery) (UserPage, error)
 	users := make([]User, 0, len(rows))
 	for _, row := range rows {
 		roles := roleNames[row.ID]
-		if len(roles) == 0 {
-			roles = []string{RoleUser}
+		if roles == nil {
+			roles = []string{}
 		}
 		users = append(users, u.userFromRow(row, roles))
 	}
@@ -180,6 +192,7 @@ func (u *Users) List(ctx context.Context, query UserListQuery) (UserPage, error)
 	}, nil
 }
 
+// Get trả chi tiết quản trị của một user hoặc business error khi không tồn tại.
 func (u *Users) Get(ctx context.Context, userID uint64) (*User, error) {
 	row, err := u.access.FindUser(ctx, userID, time.Now().UTC())
 	if err != nil {
@@ -192,13 +205,14 @@ func (u *Users) Get(ctx context.Context, userID uint64) (*User, error) {
 	if err != nil {
 		return nil, err
 	}
-	if len(roles) == 0 {
-		roles = []string{RoleUser}
+	if roles == nil {
+		roles = []string{}
 	}
 	user := u.userFromRow(*row, roles)
 	return &user, nil
 }
 
+// Update sửa hồ sơ quản trị được phép mà không thay đổi account-state field.
 func (u *Users) Update(ctx context.Context, command UpdateUserCommand) error {
 	var dateOfBirth *time.Time
 	if command.DateOfBirth != nil {
@@ -208,8 +222,22 @@ func (u *Users) Update(ctx context.Context, command UpdateUserCommand) error {
 		}
 		dateOfBirth = &value
 	}
+
+	var newAvatarKey *string
+	if command.AvatarObjectKey != nil {
+		rawKey := strings.TrimSpace(*command.AvatarObjectKey)
+		if rawKey != "" {
+			canonicalKey, err := blob.CanonicalAvatarKey(rawKey)
+			if err != nil || len(rawKey) > 255 {
+				return apperror.ErrValidationError.WithMessage("Khóa ảnh đại diện không hợp lệ")
+			}
+			newAvatarKey = &canonicalKey
+		}
+	}
+
 	now := time.Now().UTC()
-	return u.txManager.RunInTx(ctx, func(txCtx context.Context) error {
+	var oldAvatarKey *string
+	err := u.txManager.RunInTx(ctx, func(txCtx context.Context) error {
 		snapshot, err := u.lastAdmin.Lock(txCtx, command.ActorID, command.TargetID)
 		if err != nil {
 			return err
@@ -258,13 +286,14 @@ func (u *Users) Update(ctx context.Context, command UpdateUserCommand) error {
 				return err
 			}
 		}
-		if command.AvatarURL != nil {
-			objectKey := *command.AvatarURL
-			if _, err := u.profiles.SwapAvatar(
+		if command.AvatarObjectKey != nil {
+			var err error
+			oldAvatarKey, err = u.profiles.SwapAvatar(
 				txCtx,
 				command.TargetID,
-				&objectKey,
-			); err != nil {
+				newAvatarKey,
+			)
+			if err != nil {
 				return err
 			}
 		}
@@ -311,8 +340,19 @@ func (u *Users) Update(ctx context.Context, command UpdateUserCommand) error {
 			command.Metadata,
 		)
 	})
+	if err != nil {
+		return err
+	}
+
+	if oldAvatarKey != nil && *oldAvatarKey != "" {
+		if newAvatarKey == nil || *oldAvatarKey != *newAvatarKey {
+			_ = u.blobs.Delete(ctx, *oldAvatarKey)
+		}
+	}
+	return nil
 }
 
+// ChangeStatus thay đổi trạng thái trong access use case.
 func (u *Users) ChangeStatus(ctx context.Context, command ChangeStatusCommand) error {
 	if command.ActorID == command.TargetID {
 		return apperror.ErrBadRequest.WithMessage(
@@ -368,6 +408,7 @@ func (u *Users) ChangeStatus(ctx context.Context, command ChangeStatusCommand) e
 	})
 }
 
+// RequestPasswordReset tạo reset challenge và outbox event cho user do admin chọn.
 func (u *Users) RequestPasswordReset(
 	ctx context.Context,
 	command ResetPasswordCommand,
@@ -447,6 +488,7 @@ func (u *Users) RequestPasswordReset(
 	})
 }
 
+// Notify ghi durable admin-notification event thay vì gửi mail trong request goroutine.
 func (u *Users) Notify(ctx context.Context, command NotifyUserCommand) error {
 	if strings.ContainsAny(command.Subject, "\r\n") {
 		return apperror.ErrValidationError.WithMessage(
@@ -503,6 +545,7 @@ func (u *Users) Notify(ctx context.Context, command NotifyUserCommand) error {
 	})
 }
 
+// cancelSecurityWorkflows hủy challenge và outbox security còn pending trong transaction.
 func (u *Users) cancelSecurityWorkflows(
 	ctx context.Context,
 	userID uint64,
@@ -520,6 +563,7 @@ func (u *Users) cancelSecurityWorkflows(
 	return u.passwords.InvalidateActiveByUser(ctx, userID, now)
 }
 
+// userFromRow ánh xạ persistence row và canonical state sang domain user.
 func (u *Users) userFromRow(row mysqlstore.AccessUser, roles []string) User {
 	var avatarURL *string
 	if row.AvatarObjectKey != nil {
@@ -543,6 +587,7 @@ func (u *Users) userFromRow(row mysqlstore.AccessUser, roles []string) User {
 	}
 }
 
+// errorsIsConflict nhận diện business conflict mà admin mutation được phép trả công khai.
 func errorsIsConflict(err error) bool {
 	appError, ok := err.(*apperror.AppError)
 	return ok && appError.Code == apperror.ErrConflict.Code

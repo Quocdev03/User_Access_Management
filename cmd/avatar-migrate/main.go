@@ -1,3 +1,4 @@
+// Package main cung cấp lệnh di chuyển ảnh đại diện từ local storage sang S3.
 package main
 
 import (
@@ -13,6 +14,9 @@ import (
 	"go.uber.org/zap"
 )
 
+// File này chạy tác vụ một lần để sao chép và đối chiếu checksum ảnh đại diện sang S3.
+
+// main chạy migration avatar một lần và trả exit code khác không khi cấu hình hoặc đối chiếu thất bại.
 func main() {
 	batchSize := flag.Int("batch-size", 100, "profiles loaded per batch")
 	flag.Parse()
@@ -29,7 +33,7 @@ func main() {
 		log.Fatalf("Failed to initialize logger: %v", err)
 	}
 	defer func() { _ = logr.Sync() }()
-	db, err := database.ConnectMySQL(cfg.Database)
+	db, err := database.ConnectMySQL(cfg.Database.MySQLOptions())
 	if err != nil {
 		logr.Fatal("Failed to connect to MySQL", zap.Error(err))
 	}

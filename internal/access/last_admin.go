@@ -10,11 +10,15 @@ import (
 	"github.com/quocdev03/user-access-management/pkg/apperror"
 )
 
+// File này bảo vệ invariant không khóa hoặc hạ quyền quản trị viên cuối cùng.
+
+// LastAdminGuard bảo vệ invariant không cho phép xóa, khóa hoặc tước quyền của quản trị viên hoạt động cuối cùng.
 type LastAdminGuard struct {
 	accounts *mysqlstore.AccountStore
 	access   *mysqlstore.AccessStore
 }
 
+// LastAdminSnapshot nắm giữ snapshot trạng thái quyền và số lượng quản trị viên trong transaction để kiểm tra an toàn.
 type LastAdminSnapshot struct {
 	Target           *mysqlstore.Account
 	AdminRole        *mysqlstore.AccessRole
@@ -25,6 +29,7 @@ type LastAdminSnapshot struct {
 	UsableAdminCount int
 }
 
+// NewLastAdminGuard khởi tạo LastAdminGuard với các dependency được cung cấp.
 func NewLastAdminGuard(
 	accounts *mysqlstore.AccountStore,
 	accessStore *mysqlstore.AccessStore,
@@ -32,6 +37,7 @@ func NewLastAdminGuard(
 	return &LastAdminGuard{accounts: accounts, access: accessStore}
 }
 
+// Lock khóa các admin liên quan theo thứ tự ổn định để kiểm tra last-admin invariant.
 func (g *LastAdminGuard) Lock(
 	ctx context.Context,
 	actorID uint64,
@@ -99,6 +105,7 @@ func (g *LastAdminGuard) Lock(
 	return snapshot, nil
 }
 
+// RequireAdminForAdminTarget khóa tập admin liên quan khi mutation tác động một admin hiện tại.
 func (s LastAdminSnapshot) RequireAdminForAdminTarget(message string) error {
 	if s.TargetIsAdmin && !s.ActorIsAdmin {
 		return apperror.ErrForbidden.WithMessage(message)
@@ -106,6 +113,7 @@ func (s LastAdminSnapshot) RequireAdminForAdminTarget(message string) error {
 	return nil
 }
 
+// EnsureTargetRemainsAvailable từ chối mutation làm hệ thống không còn admin sử dụng được.
 func (s LastAdminSnapshot) EnsureTargetRemainsAvailable(willBeUsable bool) error {
 	if s.TargetWasUsable && !willBeUsable && s.UsableAdminCount <= 1 {
 		return apperror.ErrBadRequest.WithMessage(
@@ -115,12 +123,14 @@ func (s LastAdminSnapshot) EnsureTargetRemainsAvailable(willBeUsable bool) error
 	return nil
 }
 
+// usableAdmin kiểm tra account state và role sau mutation còn đủ điều kiện quản trị.
 func usableAdmin(state accountstate.State) bool {
 	return state.Lifecycle == accountstate.Active &&
 		state.EmailVerified &&
 		state.AdministrativeLockedAt == nil
 }
 
+// containsID kiểm tra tập ID đã khóa có chứa target hay không.
 func containsID(ids []uint64, target uint64) bool {
 	for _, id := range ids {
 		if id == target {
@@ -130,6 +140,7 @@ func containsID(ids []uint64, target uint64) bool {
 	return false
 }
 
+// requireRole trả role đã khóa hoặc business error khi role không tồn tại.
 func requireRole(role *mysqlstore.AccessRole, roleID uint64) error {
 	if role == nil {
 		return apperror.ErrNotFound.WithMessage(fmt.Sprintf("Role %d không tồn tại", roleID))

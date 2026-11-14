@@ -1,4 +1,4 @@
-// Package httpapi owns the public HTTP transport, middleware, and route wiring.
+// Package httpapi sở hữu HTTP transport, middleware, route và Swagger annotations.
 package httpapi
 
 import (
@@ -20,6 +20,9 @@ import (
 	ginSwagger "github.com/swaggo/gin-swagger"
 )
 
+// File này compose middleware, dependency và toàn bộ public route.
+
+// Setup wire dependency, middleware và route thành Gin engine hoàn chỉnh.
 func Setup(
 	db *sqlx.DB,
 	redisClient *redis.Client,
@@ -32,8 +35,8 @@ func Setup(
 	r.Use(RequestObservability(logger, httpMetrics))
 	r.Use(Recovery(logger))
 
-	// ClientIP: chỉ tin X-Forwarded-For khi TRUSTED_PROXIES được set tường minh.
-	// Không default trust-all (0.0.0.0/0) — tránh spoof IP / bypass rate limit.
+	// Chỉ tin X-Forwarded-For khi TRUSTED_PROXIES được cấu hình tường minh.
+	// Không mặc định trust-all để tránh giả mạo IP và vượt rate limit.
 	if len(cfg.App.TrustedProxies) > 0 {
 		if err := r.SetTrustedProxies(cfg.App.TrustedProxies); err != nil {
 			logger.Fatal("Invalid trusted proxy configuration", zap.Error(err))
@@ -123,17 +126,16 @@ func Setup(
 	}
 	mfa := authapp.NewMFA(
 		authapp.MFADependencies{
-			DB:                 db,
-			Accounts:           accountStore,
-			Profiles:           profileStore,
-			Roles:              roleStore,
-			Audits:             auditLogRepo,
-			Store:              mfaStore,
-			Challenges:         mfaChallengeStore,
-			Issuer:             sessionIssuer,
-			AuthInvalidator:    accountAuthInvalidator,
-			SessionInvalidator: authInvalidator,
-			Codec:              mfaSecretCodec,
+			DB:              db,
+			Accounts:        accountStore,
+			Profiles:        profileStore,
+			Roles:           roleStore,
+			Audits:          auditLogRepo,
+			Store:           mfaStore,
+			Challenges:      mfaChallengeStore,
+			Issuer:          sessionIssuer,
+			AuthInvalidator: accountAuthInvalidator,
+			Codec:           mfaSecretCodec,
 		},
 		authapp.MFAPolicy{
 			Issuer:            cfg.MFA.Issuer,
@@ -251,6 +253,7 @@ func Setup(
 		logout,
 		password,
 		mfa,
+		cfg.JWT.Secret,
 	)
 	userHandler := NewUserHandler(
 		accountProfile,

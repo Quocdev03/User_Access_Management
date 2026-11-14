@@ -35,7 +35,7 @@ definitions:
     type: object
   internal_httpapi.AdminUpdateUserRequest:
     properties:
-      avatar_url:
+      avatar_object_key:
         type: string
       date_of_birth:
         type: string
@@ -50,6 +50,33 @@ definitions:
       phone:
         maxLength: 20
         minLength: 9
+        type: string
+    type: object
+  internal_httpapi.AdminUserListItem:
+    properties:
+      avatar_url:
+        type: string
+      created_at:
+        type: string
+      date_of_birth:
+        type: string
+      email:
+        type: string
+      email_verified:
+        type: boolean
+      full_name:
+        type: string
+      id:
+        type: integer
+      phone:
+        type: string
+      roles:
+        items:
+          type: string
+        type: array
+      status:
+        type: string
+      username:
         type: string
     type: object
   internal_httpapi.AssignPermissionsRequest:
@@ -148,12 +175,24 @@ definitions:
       user:
         $ref: '#/definitions/internal_httpapi.UserInfoResponse'
     type: object
+  internal_httpapi.LogoutRequest:
+    properties:
+      refresh_token:
+        type: string
+    type: object
   internal_httpapi.MFAConfirmRequest:
     properties:
       code:
         type: string
     required:
     - code
+    type: object
+  internal_httpapi.MFALoginChallengeResponse:
+    properties:
+      challenge:
+        type: string
+      mfa_required:
+        type: boolean
     type: object
   internal_httpapi.MFALoginVerifyRequest:
     properties:
@@ -205,6 +244,17 @@ definitions:
       enabled:
         type: boolean
       recovery_codes_remaining:
+        type: integer
+    type: object
+  internal_httpapi.PaginationMeta:
+    properties:
+      page:
+        type: integer
+      per_page:
+        type: integer
+      total:
+        type: integer
+      total_pages:
         type: integer
     type: object
   internal_httpapi.PermissionResponse:
@@ -672,9 +722,9 @@ paths:
         in: query
         name: page
         type: integer
-      - description: Kích thước trang
+      - description: Số lượng bản ghi mỗi trang
         in: query
-        name: page_size
+        name: per_page
         type: integer
       - description: Sắp xếp theo trường nào
         in: query
@@ -688,9 +738,17 @@ paths:
         in: query
         name: status
         type: string
-      - description: Tìm kiếm theo username/email
+      - description: Tìm kiếm theo username
         in: query
-        name: search
+        name: username
+        type: string
+      - description: Tìm kiếm theo email
+        in: query
+        name: email
+        type: string
+      - description: Lọc theo role
+        in: query
+        name: role
         type: string
       produces:
       - application/json
@@ -703,8 +761,10 @@ paths:
             - properties:
                 data:
                   items:
-                    $ref: '#/definitions/internal_httpapi.UserProfileResponse'
+                    $ref: '#/definitions/internal_httpapi.AdminUserListItem'
                   type: array
+                meta:
+                  $ref: '#/definitions/internal_httpapi.PaginationMeta'
               type: object
         "400":
           description: Bad Request
@@ -1066,7 +1126,8 @@ paths:
     post:
       consumes:
       - application/json
-      description: Đăng nhập vào hệ thống
+      description: Đăng nhập vào hệ thống (trả về access/refresh token nếu không có
+        MFA, hoặc trả về MFA challenge nếu đã kích hoạt MFA)
       parameters:
       - description: Thông tin đăng nhập
         in: body
@@ -1078,13 +1139,13 @@ paths:
       - application/json
       responses:
         "200":
-          description: OK
+          description: Yêu cầu xác thực MFA (khi tài khoản đã kích hoạt MFA)
           schema:
             allOf:
             - $ref: '#/definitions/github_com_quocdev03_user-access-management_pkg_response.Response'
             - properties:
                 data:
-                  $ref: '#/definitions/internal_httpapi.LoginResponse'
+                  $ref: '#/definitions/internal_httpapi.MFALoginChallengeResponse'
               type: object
         "400":
           description: Bad Request
@@ -1105,7 +1166,13 @@ paths:
     post:
       consumes:
       - application/json
-      description: Đăng xuất khỏi hệ thống
+      description: Đăng xuất khỏi hệ thống bằng access token hoặc refresh token
+      parameters:
+      - description: Thông tin đăng xuất tùy chọn
+        in: body
+        name: request
+        schema:
+          $ref: '#/definitions/internal_httpapi.LogoutRequest'
       produces:
       - application/json
       responses:

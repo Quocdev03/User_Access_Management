@@ -20,6 +20,9 @@ import (
 	"github.com/quocdev03/user-access-management/pkg/apperror"
 )
 
+// File này kiểm chứng tích hợp store integration với các dependency runtime liên quan.
+
+// TestAccountStateTransactionCommitAndRollback kiểm chứng kịch bản AccountStateTransactionCommitAndRollback.
 func TestAccountStateTransactionCommitAndRollback(t *testing.T) {
 	db := openIntegrationDB(t)
 	userID := insertAccountFixture(t, db, "transaction")
@@ -74,6 +77,7 @@ func TestAccountStateTransactionCommitAndRollback(t *testing.T) {
 	assertAccountState(t, db, userID, "disabled", 2, 0)
 }
 
+// TestNestedTransactionIsRejected kiểm chứng kịch bản NestedTransactionIsRejected.
 func TestNestedTransactionIsRejected(t *testing.T) {
 	db := openIntegrationDB(t)
 	txManager := mysqlstore.NewTxManager(db)
@@ -88,6 +92,7 @@ func TestNestedTransactionIsRejected(t *testing.T) {
 	}
 }
 
+// TestTargetStoresUseExpandedSchema kiểm chứng kịch bản TargetStoresUseExpandedSchema.
 func TestTargetStoresUseExpandedSchema(t *testing.T) {
 	db := openIntegrationDB(t)
 	ctx := context.Background()
@@ -202,6 +207,7 @@ func TestTargetStoresUseExpandedSchema(t *testing.T) {
 	}
 }
 
+// TestConcurrentRefreshRotationHasOneWinnerAndDurableReuse kiểm chứng kịch bản ConcurrentRefreshRotationHasOneWinnerAndDurableReuse.
 func TestConcurrentRefreshRotationHasOneWinnerAndDurableReuse(t *testing.T) {
 	db := openIntegrationDB(t)
 	userID := insertAccountFixture(t, db, "refresh_race")
@@ -284,6 +290,7 @@ func TestConcurrentRefreshRotationHasOneWinnerAndDurableReuse(t *testing.T) {
 	}
 }
 
+// TestExpiredRefreshRevocationCommitsBeforeBusinessError kiểm chứng kịch bản ExpiredRefreshRevocationCommitsBeforeBusinessError.
 func TestExpiredRefreshRevocationCommitsBeforeBusinessError(t *testing.T) {
 	db := openIntegrationDB(t)
 	userID := insertAccountFixture(t, db, "expired_refresh")
@@ -333,6 +340,7 @@ func TestExpiredRefreshRevocationCommitsBeforeBusinessError(t *testing.T) {
 	}
 }
 
+// TestSingleSessionBlacklistFailureInvalidatesAllAuth kiểm chứng kịch bản SingleSessionBlacklistFailureInvalidatesAllAuth.
 func TestSingleSessionBlacklistFailureInvalidatesAllAuth(t *testing.T) {
 	db := openIntegrationDB(t)
 	userID := insertAccountFixture(t, db, "revoke_failure")
@@ -377,6 +385,7 @@ func TestSingleSessionBlacklistFailureInvalidatesAllAuth(t *testing.T) {
 	}
 }
 
+// TestConcurrentRefreshAndSingleRevokeLeavesNoUsableSession kiểm chứng kịch bản ConcurrentRefreshAndSingleRevokeLeavesNoUsableSession.
 func TestConcurrentRefreshAndSingleRevokeLeavesNoUsableSession(t *testing.T) {
 	db := openIntegrationDB(t)
 	userID := insertAccountFixture(t, db, "refresh_revoke")
@@ -462,6 +471,7 @@ func TestConcurrentRefreshAndSingleRevokeLeavesNoUsableSession(t *testing.T) {
 	}
 }
 
+// TestConcurrentRefreshAndLogoutHasOneConsistentWinner kiểm chứng kịch bản ConcurrentRefreshAndLogoutHasOneConsistentWinner.
 func TestConcurrentRefreshAndLogoutHasOneConsistentWinner(t *testing.T) {
 	db := openIntegrationDB(t)
 	userID := insertAccountFixture(t, db, "refresh_logout")
@@ -564,6 +574,7 @@ func TestConcurrentRefreshAndLogoutHasOneConsistentWinner(t *testing.T) {
 	}
 }
 
+// TestObservedClientProfilesDoNotCollapseSameOSAndBrowser kiểm chứng kịch bản ObservedClientProfilesDoNotCollapseSameOSAndBrowser.
 func TestObservedClientProfilesDoNotCollapseSameOSAndBrowser(t *testing.T) {
 	db := openIntegrationDB(t)
 	userID := insertAccountFixture(t, db, "client_profiles")
@@ -602,24 +613,29 @@ func TestObservedClientProfilesDoNotCollapseSameOSAndBrowser(t *testing.T) {
 	}
 }
 
+// fakeTokenState là stub triển khai TokenState phục vụ kiểm thử tích hợp MySQL store.
 type fakeTokenState struct {
 	blacklistErr error
 	markErr      error
 	reused       bool
 }
 
+// BlacklistJTI ghi nhận JTI mà store integration fixture yêu cầu blacklist.
 func (f *fakeTokenState) BlacklistJTI(context.Context, string, time.Duration) error {
 	return f.blacklistErr
 }
 
+// IsRefreshReuseMarked đọc refresh-reuse marker từ in-memory test double.
 func (f *fakeTokenState) IsRefreshReuseMarked(context.Context, string) (bool, error) {
 	return f.reused, nil
 }
 
+// MarkRefreshReuse lưu refresh-reuse marker trong in-memory test double.
 func (f *fakeTokenState) MarkRefreshReuse(context.Context, string, time.Duration) error {
 	return f.markErr
 }
 
+// openIntegrationDB kết nối disposable MySQL và bỏ qua test khi integration DSN chưa được cấu hình.
 func openIntegrationDB(t *testing.T) *sqlx.DB {
 	t.Helper()
 
@@ -648,6 +664,7 @@ func openIntegrationDB(t *testing.T) *sqlx.DB {
 	return db
 }
 
+// insertAccountFixture tạo account row tối thiểu cho store integration test.
 func insertAccountFixture(t *testing.T, db *sqlx.DB, suffix string) uint64 {
 	t.Helper()
 	result, err := db.Exec(`
@@ -676,6 +693,7 @@ func insertAccountFixture(t *testing.T, db *sqlx.DB, suffix string) uint64 {
 	return uint64(id)
 }
 
+// insertSessionFixture tạo session và refresh history theo schema hiện tại.
 func insertSessionFixture(t *testing.T, db *sqlx.DB, userID uint64, suffix string) {
 	t.Helper()
 	_, err := db.Exec(`
@@ -691,6 +709,7 @@ func insertSessionFixture(t *testing.T, db *sqlx.DB, userID uint64, suffix strin
 	}
 }
 
+// assertAccountState đọc canonical state và kiểm tra các field bảo mật mong đợi.
 func assertAccountState(
 	t *testing.T,
 	db *sqlx.DB,

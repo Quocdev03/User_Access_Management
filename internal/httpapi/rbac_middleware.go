@@ -8,6 +8,9 @@ import (
 	"github.com/quocdev03/user-access-management/pkg/response"
 )
 
+// File này chặn request không có permission yêu cầu.
+
+// PermissionMiddleware yêu cầu principal có permission trước khi vào admin handler.
 func PermissionMiddleware(
 	authorizer *accessapp.Authorizer,
 	requiredPermission string,

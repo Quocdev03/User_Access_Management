@@ -10,6 +10,9 @@ import (
 	"github.com/jmoiron/sqlx"
 )
 
+// File này lưu observed client profile gắn với tài khoản.
+
+// ClientProfile ánh xạ bản ghi thông tin thiết bị và trình duyệt đã quan sát được của người dùng.
 type ClientProfile struct {
 	ID           uint64     `db:"id"`
 	UserID       uint64     `db:"user_id"`
@@ -25,14 +28,17 @@ type ClientProfile struct {
 const clientProfileProjection = `id, user_id, device_name, device_type,
 	os, browser, ip_address, last_active_at, created_at`
 
+// ClientProfileStore quản lý việc lưu và truy vấn hồ sơ thiết bị client trong MySQL.
 type ClientProfileStore struct {
 	db *sqlx.DB
 }
 
+// NewClientProfileStore khởi tạo ClientProfileStore với các dependency được cung cấp.
 func NewClientProfileStore(db *sqlx.DB) *ClientProfileStore {
 	return &ClientProfileStore{db: db}
 }
 
+// Observe upsert observed client profile mà không biến dữ liệu này thành canonical identity.
 func (s *ClientProfileStore) Observe(ctx context.Context, profile *ClientProfile) error {
 	clampClientProfile(profile)
 	db := executor(ctx, s.db)
@@ -94,6 +100,7 @@ func (s *ClientProfileStore) Observe(ctx context.Context, profile *ClientProfile
 	return nil
 }
 
+// FindByUserID truy vấn theo người dùng ID tại MySQL adapter và giữ mapping persistence khỏi domain.
 func (s *ClientProfileStore) FindByUserID(
 	ctx context.Context,
 	userID uint64,
@@ -111,6 +118,7 @@ func (s *ClientProfileStore) FindByUserID(
 	return profiles, nil
 }
 
+// clampClientProfile giới hạn độ dài metadata theo schema trước khi ghi.
 func clampClientProfile(profile *ClientProfile) {
 	profile.DeviceName = clampOptionalRunes(profile.DeviceName, 255)
 	profile.DeviceType = clampOptionalRunes(profile.DeviceType, 50)
@@ -119,6 +127,7 @@ func clampClientProfile(profile *ClientProfile) {
 	profile.IPAddress = clampOptionalRunes(profile.IPAddress, 45)
 }
 
+// clampOptionalRunes cắt chuỗi UTF-8 theo rune và giữ nil cho giá trị trống.
 func clampOptionalRunes(value *string, maximum int) *string {
 	if value == nil {
 		return nil

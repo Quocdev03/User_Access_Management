@@ -10,6 +10,9 @@ import (
 	"github.com/quocdev03/user-access-management/pkg/apperror"
 )
 
+// File này liệt kê và thu hồi session theo account ownership.
+
+// View biểu diễn thông tin chi tiết của một phiên đăng nhập khi hiển thị cho người dùng.
 type View struct {
 	ID        uint64
 	IPAddress *string
@@ -20,6 +23,7 @@ type View struct {
 	IsCurrent bool
 }
 
+// Manager quản lý việc truy vấn danh sách phiên hoạt động và thu hồi phiên theo quyền sở hữu của người dùng.
 type Manager struct {
 	sessions    *mysqlstore.SessionStore
 	profiles    *mysqlstore.ClientProfileStore
@@ -29,6 +33,7 @@ type Manager struct {
 	accessTTL   time.Duration
 }
 
+// NewManager khởi tạo Manager với các dependency được cung cấp.
 func NewManager(
 	db *sqlx.DB,
 	sessions *mysqlstore.SessionStore,
@@ -47,6 +52,7 @@ func NewManager(
 	}
 }
 
+// List trả các session đang hoạt động thuộc tài khoản hiện tại.
 func (m *Manager) List(
 	ctx context.Context,
 	userID uint64,
@@ -71,6 +77,7 @@ func (m *Manager) List(
 	return result, nil
 }
 
+// Revoke kiểm tra ownership, thu hồi session rồi blacklist access JTI sau commit.
 func (m *Manager) Revoke(ctx context.Context, userID, sessionID uint64) error {
 	var jti string
 	if err := m.txManager.RunInTx(ctx, func(txCtx context.Context) error {

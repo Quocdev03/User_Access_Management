@@ -8,6 +8,9 @@ import (
 	"testing"
 )
 
+// File này kiểm chứng hành vi local và các trường hợp lỗi liên quan.
+
+// TestLocalStorePutURLAndDelete kiểm chứng kịch bản LocalStorePutURLAndDelete.
 func TestLocalStorePutURLAndDelete(t *testing.T) {
 	root := t.TempDir()
 	store, err := NewLocalStore(root)
@@ -40,6 +43,7 @@ func TestLocalStorePutURLAndDelete(t *testing.T) {
 	}
 }
 
+// TestLocalStoreRejectsTraversalAndPreservesExternalReferences kiểm chứng kịch bản LocalStoreRejectsTraversalAndPreservesExternalReferences.
 func TestLocalStoreRejectsTraversalAndPreservesExternalReferences(t *testing.T) {
 	store, err := NewLocalStore(t.TempDir())
 	if err != nil {

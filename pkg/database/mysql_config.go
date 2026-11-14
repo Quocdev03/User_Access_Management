@@ -10,18 +10,20 @@ import (
 	"time"
 
 	"github.com/go-sql-driver/mysql"
-	"github.com/quocdev03/user-access-management/internal/config"
 )
+
+// File này tạo DSN và TLS config an toàn cho MySQL.
 
 var mysqlTLSConfigSequence atomic.Uint64
 
-func newMySQLConfig(cfg config.DatabaseConfig, multiStatements bool) (mysql.Config, error) {
+// newMySQLConfig tạo DSN, TLS registration và pool options từ cấu hình đã kiểm tra.
+func newMySQLConfig(opts MySQLOptions, multiStatements bool) (mysql.Config, error) {
 	mysqlCfg := mysql.Config{
-		User:                 cfg.User,
-		Passwd:               cfg.Password,
+		User:                 opts.User,
+		Passwd:               opts.Password,
 		Net:                  "tcp",
-		Addr:                 net.JoinHostPort(cfg.Host, cfg.Port),
-		DBName:               cfg.Name,
+		Addr:                 net.JoinHostPort(opts.Host, opts.Port),
+		DBName:               opts.Name,
 		Collation:            "utf8mb4_unicode_ci",
 		ParseTime:            true,
 		Loc:                  time.UTC,
@@ -30,16 +32,16 @@ func newMySQLConfig(cfg config.DatabaseConfig, multiStatements bool) (mysql.Conf
 		MultiStatements:      multiStatements,
 	}
 
-	switch cfg.TLSMode {
+	switch opts.TLSMode {
 	case "", "disable":
 	case "skip-verify":
 		mysqlCfg.TLSConfig = "skip-verify"
 	case "verify":
-		if cfg.TLSCAFile == "" {
+		if opts.TLSCAFile == "" {
 			mysqlCfg.TLSConfig = "true"
 			break
 		}
-		certificate, err := os.ReadFile(cfg.TLSCAFile)
+		certificate, err := os.ReadFile(opts.TLSCAFile)
 		if err != nil {
 			return mysql.Config{}, fmt.Errorf("read MySQL CA file: %w", err)
 		}
@@ -51,13 +53,13 @@ func newMySQLConfig(cfg config.DatabaseConfig, multiStatements bool) (mysql.Conf
 		if err := mysql.RegisterTLSConfig(name, &tls.Config{
 			MinVersion: tls.VersionTLS12,
 			RootCAs:    roots,
-			ServerName: cfg.Host,
+			ServerName: opts.Host,
 		}); err != nil {
 			return mysql.Config{}, fmt.Errorf("register MySQL TLS config: %w", err)
 		}
 		mysqlCfg.TLSConfig = name
 	default:
-		return mysql.Config{}, fmt.Errorf("unsupported MySQL TLS mode %q", cfg.TLSMode)
+		return mysql.Config{}, fmt.Errorf("unsupported MySQL TLS mode %q", opts.TLSMode)
 	}
 
 	return mysqlCfg, nil

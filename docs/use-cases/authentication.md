@@ -6,6 +6,12 @@ The rate column is `capacity / rejected-valid-request abuse threshold` for the
 configured one-minute refill window. Reaching the abuse threshold bans the identity
 for the configured ban duration. Security Redis errors fail closed.
 
+> [!NOTE]
+> **Công thức cấu hình Rate Limit giữa Code và Docs**:
+> Cột *Per-route rate* trong bảng dưới đây được ghi theo quy chuẩn `capacity / abuseThreshold` (ví dụ `10/20` nghĩa là capacity = 10 tokens và ngưỡng vi phạm abuseThreshold = 20 rejected requests). Trong mã nguồn Go (`internal/httpapi/auth_routes.go`), tham số `banLimit` truyền vào middleware rate limit tính theo công thức:
+> `banLimit (code) = capacity + abuseThreshold (docs)`
+> Vì vậy, định nghĩa `10/20` trong tài liệu tương ứng chính xác với lời gọi `rateLimit(name, 10, 30)` trong code (10 + 20 = 30). Tương tự, `15/35` ứng với `(15, 50)` và `30/30` ứng với `(30, 60)`.
+
 ## Operation contracts
 
 | ID | Auth | Per-route rate | Core behavior |
@@ -32,10 +38,11 @@ for the configured ban duration. Security Redis errors fail closed.
   wrong credential regardless of hidden account state. A state-specific error is
   returned only after the credential proof succeeds. Verification does not reveal
   whether an address is already verified; resend and forgot keep generic success.
+- Quy tắc vòng đời session, xoay vòng refresh token, khóa đồng thời (single-winner lock), phát hiện tái sử dụng (reuse detection) và thu hồi phiên tuân thủ chuẩn hóa tại [session domain](file:///c:/Users/ccquo/Downloads/Compressed/user_access_management/docs/domain/session.md).
 - Login locks the user row before changing failed attempts, lock state or last-login state.
 - Successful login must re-check user/auth version after expensive credential/MFA work before issuing a session.
 - Verification/resend for the same subject serialize; only one active or consumed challenge wins.
-- Refresh locks the session row; concurrent refresh has one winner. Reuse invalidates all auth state. An expired locked session is durably revoked before the business error is returned.
+- Refresh locks the session row; concurrent refresh có đúng một winner và reuse invalidates toàn bộ auth state theo [session domain](file:///c:/Users/ccquo/Downloads/Compressed/user_access_management/docs/domain/session.md#2-xoay-vòng-phiên--kiểm-soát-đồng-thời-session-rotation--concurrency).
 - Credential/reset mutation, audit and outbox enqueue commit in one MySQL transaction.
 - Reset token mang `auth_version` snapshot; account row luôn khóa trước reset-token row. Credential snapshot đổi trong lúc bcrypt chạy làm request cũ thất bại thay vì ghi đè password mới.
 - Password mutation vô hiệu reset token, email-change workflow và sessions trong cùng MySQL transaction; không còn Redis email-change cleanup path.

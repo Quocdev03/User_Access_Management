@@ -17,16 +17,20 @@ import (
 	"go.uber.org/zap"
 )
 
+// File này ghi request metrics và phục vụ metrics endpoint có bảo vệ.
+
 const RequestIDKey = "requestID"
 
 var requestIDPattern = regexp.MustCompile(`^[A-Za-z0-9._-]{1,128}$`)
 
+// RequestID giữ request ID hợp lệ từ upstream hoặc tạo ID mới cho trace.
 func RequestID(c *gin.Context) string {
 	requestID, _ := c.Get(RequestIDKey)
 	value, _ := requestID.(string)
 	return value
 }
 
+// HTTPMetrics thu thập và thống kê các chỉ số hiệu năng HTTP request bằng các biến atomic an toàn luồng.
 type HTTPMetrics struct {
 	requests         atomic.Uint64
 	inFlight         atomic.Int64
@@ -38,10 +42,12 @@ type HTTPMetrics struct {
 	rateLimitRejects atomic.Uint64
 }
 
+// RecordRateLimitReject tăng metric từ chối theo limiter scope mà không ghi identifier nhạy cảm.
 func (m *HTTPMetrics) RecordRateLimitReject() {
 	m.rateLimitRejects.Add(1)
 }
 
+// RequestObservability ghi latency, status và structured request log sau khi handler kết thúc.
 func RequestObservability(logger *zap.Logger, metrics *HTTPMetrics) gin.HandlerFunc {
 	return func(c *gin.Context) {
 		requestID := c.GetHeader("X-Request-ID")
@@ -92,6 +98,7 @@ func RequestObservability(logger *zap.Logger, metrics *HTTPMetrics) gin.HandlerF
 	}
 }
 
+// Recovery chuyển panic thành response 500 và ghi stack qua structured logger.
 func Recovery(logger *zap.Logger) gin.HandlerFunc {
 	return gin.CustomRecovery(func(c *gin.Context, recovered any) {
 		requestID, _ := c.Get(RequestIDKey)
@@ -106,6 +113,7 @@ func Recovery(logger *zap.Logger) gin.HandlerFunc {
 	})
 }
 
+// MetricsHandler xuất Prometheus metrics sau khi middleware bảo vệ route hoàn tất.
 func MetricsHandler(
 	metrics *HTTPMetrics,
 	db *sqlx.DB,
@@ -113,14 +121,17 @@ func MetricsHandler(
 	token string,
 ) gin.HandlerFunc {
 	return func(c *gin.Context) {
-		if token != "" {
-			provided := c.GetHeader("Authorization")
-			expected := "Bearer " + token
-			if len(provided) != len(expected) ||
-				subtle.ConstantTimeCompare([]byte(provided), []byte(expected)) != 1 {
-				c.Status(http.StatusNotFound)
-				return
-			}
+		if token == "" {
+			c.Status(http.StatusNotFound)
+			return
+		}
+
+		provided := c.GetHeader("Authorization")
+		expected := "Bearer " + token
+		if len(provided) != len(expected) ||
+			subtle.ConstantTimeCompare([]byte(provided), []byte(expected)) != 1 {
+			c.Status(http.StatusNotFound)
+			return
 		}
 
 		var memory runtime.MemStats

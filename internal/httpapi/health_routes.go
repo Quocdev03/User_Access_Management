@@ -11,6 +11,9 @@ import (
 	"go.uber.org/zap"
 )
 
+// File này cung cấp liveness và readiness endpoint.
+
+// setupHealthRoutes đăng ký liveness và readiness mà không phụ thuộc limiter state.
 func setupHealthRoutes(
 	r *gin.Engine,
 	db *sqlx.DB,

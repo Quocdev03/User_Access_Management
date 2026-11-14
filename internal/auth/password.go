@@ -14,29 +14,36 @@ import (
 	"github.com/quocdev03/user-access-management/pkg/hash"
 )
 
+// File này điều phối quên, đặt lại và thay đổi mật khẩu.
+
+// PasswordPolicy quy định thời hạn hiệu lực của reset token và chính sách khóa tài khoản.
 type PasswordPolicy struct {
 	ResetExpiry       time.Duration
 	MaxFailedAttempts int
 	LockDuration      time.Duration
 }
 
+// PasswordMetadata lưu trữ địa chỉ IP và User-Agent khi thực hiện thao tác liên quan đến mật khẩu.
 type PasswordMetadata struct {
 	IPAddress string
 	UserAgent string
 }
 
+// ResetPasswordCommand chứa thông tin token và mật khẩu mới để đặt lại mật khẩu.
 type ResetPasswordCommand struct {
 	Token       string
 	NewPassword string
 	Metadata    PasswordMetadata
 }
 
+// ChangePasswordCommand chứa mật khẩu hiện tại và mật khẩu mới khi người dùng chủ động đổi mật khẩu.
 type ChangePasswordCommand struct {
 	CurrentPassword string
 	NewPassword     string
 	Metadata        PasswordMetadata
 }
 
+// ForceChangePasswordCommand chứa thông tin để người dùng đổi mật khẩu bắt buộc tại lần đăng nhập đầu tiên.
 type ForceChangePasswordCommand struct {
 	Email           string
 	CurrentPassword string
@@ -44,6 +51,7 @@ type ForceChangePasswordCommand struct {
 	Metadata        PasswordMetadata
 }
 
+// Password điều phối các use case quên mật khẩu, đặt lại mật khẩu và đổi mật khẩu an toàn.
 type Password struct {
 	accounts     *mysqlstore.AccountStore
 	resets       *mysqlstore.PasswordResetStore
@@ -56,6 +64,7 @@ type Password struct {
 	policy       PasswordPolicy
 }
 
+// NewPassword khởi tạo Password với các dependency được cung cấp.
 func NewPassword(
 	db *sqlx.DB,
 	accounts *mysqlstore.AccountStore,
@@ -83,6 +92,7 @@ func NewPassword(
 	}
 }
 
+// Forgot tạo reset challenge và outbox event nhưng không làm lộ email có tồn tại.
 func (p *Password) Forgot(ctx context.Context, email string) error {
 	token, err := hash.GenerateResetToken()
 	if err != nil {
@@ -102,6 +112,10 @@ func (p *Password) Forgot(ctx context.Context, email string) error {
 		state, err := account.State()
 		if err != nil {
 			return err
+		}
+		state.UnlockLoginIfExpired(now)
+		if !state.EmailVerified || state.AuthenticationError(now) != nil {
+			return nil
 		}
 		if err := p.outbox.CancelPendingPasswordReset(txCtx, account.ID, now); err != nil {
 			return err
@@ -138,6 +152,7 @@ func (p *Password) Forgot(ctx context.Context, email string) error {
 	})
 }
 
+// Reset consume reset token, đổi credential và vô hiệu hóa session trong transaction.
 func (p *Password) Reset(ctx context.Context, command ResetPasswordCommand) error {
 	if err := hash.ValidateNewPassword(command.NewPassword); err != nil {
 		return apperror.ErrValidationError.WithMessage(err.Error())
@@ -158,6 +173,17 @@ func (p *Password) Reset(ctx context.Context, command ResetPasswordCommand) erro
 	if accountSnapshot == nil ||
 		accountSnapshot.AuthVersion != tokenSnapshot.AuthVersion {
 		return apperror.ErrResetTokenInvalid
+	}
+	snapshotState, err := accountSnapshot.State()
+	if err != nil {
+		return err
+	}
+	snapshotState.UnlockLoginIfExpired(now)
+	if !snapshotState.EmailVerified {
+		return apperror.ErrAccountInactive
+	}
+	if err := snapshotState.AuthenticationError(now); err != nil {
+		return err
 	}
 	if hash.CheckPassword(command.NewPassword, accountSnapshot.PasswordHash) {
 		return apperror.ErrSamePassword
@@ -200,6 +226,15 @@ func (p *Password) Reset(ctx context.Context, command ResetPasswordCommand) erro
 		state, err := account.State()
 		if err != nil {
 			return err
+		}
+		state.UnlockLoginIfExpired(now)
+		if !state.EmailVerified {
+			businessError = apperror.ErrAccountInactive
+			return nil
+		}
+		if err := state.AuthenticationError(now); err != nil {
+			businessError = err
+			return nil
 		}
 		state.CompleteCredentialChange()
 		if err := p.outbox.CancelPendingPasswordReset(txCtx, account.ID, now); err != nil {
@@ -246,6 +281,7 @@ func (p *Password) Reset(ctx context.Context, command ResetPasswordCommand) erro
 	return nil
 }
 
+// Change xác minh password hiện tại rồi đổi credential và vô hiệu hóa session.
 func (p *Password) Change(
 	ctx context.Context,
 	userID uint64,
@@ -267,11 +303,13 @@ func (p *Password) Change(
 		command.CurrentPassword,
 		command.NewPassword,
 		false,
+		true,
 		"PASSWORD_CHANGE",
 		command.Metadata,
 	)
 }
 
+// ForceChange đổi credential của tài khoản bị bắt buộc, tăng auth_version và xóa session.
 func (p *Password) ForceChange(
 	ctx context.Context,
 	command ForceChangePasswordCommand,
@@ -293,17 +331,20 @@ func (p *Password) ForceChange(
 		command.CurrentPassword,
 		command.NewPassword,
 		true,
+		false,
 		"PASSWORD_FORCE_CHANGE",
 		command.Metadata,
 	)
 }
 
+// changeWithCurrentCredential xác minh password hiện tại rồi đổi credential trong locked transaction.
 func (p *Password) changeWithCurrentCredential(
 	ctx context.Context,
 	accountSnapshot *mysqlstore.Account,
 	currentPassword string,
 	newPassword string,
 	requirePasswordChange bool,
+	trackFailedAttempts bool,
 	auditAction string,
 	metadata PasswordMetadata,
 ) error {
@@ -318,6 +359,9 @@ func (p *Password) changeWithCurrentCredential(
 	}
 	passwordMatches := hash.CheckPassword(currentPassword, accountSnapshot.PasswordHash)
 	if !passwordMatches {
+		if !trackFailedAttempts {
+			return apperror.ErrInvalidCredentials
+		}
 		if err := snapshotState.AuthenticationError(now); err != nil {
 			return apperror.ErrInvalidCredentials
 		}
@@ -362,6 +406,10 @@ func (p *Password) changeWithCurrentCredential(
 		}
 		state.UnlockLoginIfExpired(now)
 		if !passwordMatches {
+			if !trackFailedAttempts {
+				businessError = apperror.ErrInvalidCredentials
+				return nil
+			}
 			if err := state.AuthenticationError(now); err != nil {
 				businessError = apperror.ErrInvalidCredentials
 				return nil
@@ -435,6 +483,7 @@ func (p *Password) changeWithCurrentCredential(
 	return nil
 }
 
+// auditCredentialChange ghi password mutation theo best effort và cảnh báo khi store thất bại.
 func (p *Password) auditCredentialChange(
 	ctx context.Context,
 	userID uint64,
@@ -456,6 +505,7 @@ func (p *Password) auditCredentialChange(
 	})
 }
 
+// activeResetToken tạo business error cho reset token đã hết hạn hoặc bị consume.
 func activeResetToken(token *mysqlstore.PasswordResetToken, now time.Time) bool {
 	return token != nil &&
 		token.ConsumedAt == nil &&

@@ -26,12 +26,12 @@ All business tables use InnoDB and `utf8mb4_unicode_ci`.
 | `outbox_events` | Durable delivery queue | unique idempotency key; claim/delivery indexes |
 | `audit_logs` | Append-oriented audit record | nullable user FK with `ON DELETE SET NULL` |
 | `user_totp` | Encrypted TOTP enrollment and replay state | one row per user; user FK cascade |
-| `user_totp_recovery_codes` | One-time recovery-code hashes | unique hash per user; unused index |
+| `user_totp_recovery_codes` | One-time recovery-code hashes | unique hash per user; partial index for unused recovery codes (`idx_user_totp_recovery_user_unused`) |
 
 ## `users`
 
 ```text
-id BIGINT UNSIGNED PK
+id BIGINT UNSIGNED PK AUTO_INCREMENT
 username VARCHAR(50) UNIQUE
 email VARCHAR(255) UNIQUE
 password_hash VARCHAR(255)
@@ -49,13 +49,29 @@ created_at, updated_at DATETIME
 Profile fields and avatar object key belong only to `user_profiles`. Production resolves
 `avatar_object_key` through the configured blob adapter.
 
-## Sessions and clients
+## `sessions`
+
+```text
+id BIGINT UNSIGNED PK AUTO_INCREMENT
+user_id BIGINT UNSIGNED NOT NULL (FK -> users.id)
+access_jti VARCHAR(36) NOT NULL
+current_refresh_hash VARCHAR(255) NOT NULL UNIQUE
+ip_address VARCHAR(45) NULL
+user_agent TEXT NULL
+client_profile_id BIGINT UNSIGNED NULL (FK -> devices.id)
+expires_at DATETIME NOT NULL
+revoked_at DATETIME NULL
+created_at DATETIME NOT NULL
+updated_at DATETIME NOT NULL
+```
 
 `sessions` uses non-null `access_jti` and `current_refresh_hash`, optional
-`client_profile_id`, `revoked_at` and `updated_at`. Migration 034 removed the four
-old projections after mismatch count reached zero. Migration 029 removed the false
-`(user_id, os, browser)` physical-identity constraint without deleting observations.
-The public `/devices` name remains backward-compatible but does not claim physical identity.
+`client_profile_id`, `ip_address`, `user_agent`, `revoked_at`, `expires_at`, `created_at`
+và `updated_at`. Migration 034 removed the four old projections (`token_hash`,
+`refresh_token_hash`, `jti`, `device_id`) after mismatch count reached zero. Migration 029
+removed the false `(user_id, os, browser)` physical-identity constraint without deleting
+observations. The public `/devices` name remains backward-compatible but does not claim
+physical identity.
 
 ## Verification and reset
 

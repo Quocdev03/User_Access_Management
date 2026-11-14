@@ -2,14 +2,20 @@ package httpapi
 
 import (
 	"net/http"
+	"strings"
+	"time"
 
 	"github.com/gin-gonic/gin"
 	authapp "github.com/quocdev03/user-access-management/internal/auth"
+	"github.com/quocdev03/user-access-management/pkg/apperror"
 	"github.com/quocdev03/user-access-management/pkg/jwt"
 	"github.com/quocdev03/user-access-management/pkg/response"
 	"github.com/quocdev03/user-access-management/pkg/validator"
 )
 
+// File này bind request xác thực và ánh xạ kết quả use case sang HTTP.
+
+// AuthHandler tiếp nhận và xử lý các HTTP request xác thực người dùng, đăng ký, đăng nhập và MFA.
 type AuthHandler struct {
 	registration      *authapp.Registration
 	emailVerification *authapp.EmailVerification
@@ -18,8 +24,10 @@ type AuthHandler struct {
 	logout            *authapp.Logout
 	password          *authapp.Password
 	mfa               *authapp.MFA
+	jwtSecret         string
 }
 
+// NewAuthHandler khởi tạo AuthHandler với các dependency được cung cấp.
 func NewAuthHandler(
 	registration *authapp.Registration,
 	emailVerification *authapp.EmailVerification,
@@ -28,6 +36,7 @@ func NewAuthHandler(
 	logout *authapp.Logout,
 	password *authapp.Password,
 	mfa *authapp.MFA,
+	jwtSecret string,
 ) *AuthHandler {
 	return &AuthHandler{
 		registration:      registration,
@@ -37,9 +46,11 @@ func NewAuthHandler(
 		logout:            logout,
 		password:          password,
 		mfa:               mfa,
+		jwtSecret:         jwtSecret,
 	}
 }
 
+// Register xử lý HTTP cho thao tác đăng ký tài khoản mới.
 // @Summary Đăng ký tài khoản mới
 // @Description Đăng ký người dùng mới vào hệ thống
 // @Tags Authentication
@@ -85,6 +96,7 @@ func (h *AuthHandler) Register(c *gin.Context) {
 	)
 }
 
+// VerifyEmail xử lý HTTP cho thao tác xác thực email.
 // @Summary Xác thực email
 // @Description Xác thực tài khoản qua email
 // @Tags Authentication
@@ -110,6 +122,7 @@ func (h *AuthHandler) VerifyEmail(c *gin.Context) {
 	response.Success(c, http.StatusOK, "Xác thực email thành công", nil)
 }
 
+// ResendVerificationEmail xử lý HTTP cho thao tác gửi lại OTP xác thực.
 // @Summary Gửi lại OTP xác thực
 // @Description Yêu cầu gửi lại email chứa OTP xác thực tài khoản
 // @Tags Authentication
@@ -135,13 +148,15 @@ func (h *AuthHandler) ResendVerificationEmail(c *gin.Context) {
 	response.Success(c, http.StatusOK, "Đã gửi lại mã OTP. Vui lòng kiểm tra email của bạn.", nil)
 }
 
+// Login xử lý HTTP cho thao tác đăng nhập.
 // @Summary Đăng nhập
-// @Description Đăng nhập vào hệ thống
+// @Description Đăng nhập vào hệ thống (trả về access/refresh token nếu không có MFA, hoặc trả về MFA challenge nếu đã kích hoạt MFA)
 // @Tags Authentication
 // @Accept json
 // @Produce json
 // @Param request body LoginRequest true "Thông tin đăng nhập"
-// @Success 200 {object} response.Response{data=LoginResponse}
+// @Success 200 {object} response.Response{data=LoginResponse} "Đăng nhập thành công"
+// @Response 200 {object} response.Response{data=MFALoginChallengeResponse} "Yêu cầu xác thực MFA (khi tài khoản đã kích hoạt MFA)"
 // @Failure 400 {object} response.Response
 // @Failure 401 {object} response.Response
 // @Failure 500 {object} response.Response
@@ -188,6 +203,7 @@ func (h *AuthHandler) Login(c *gin.Context) {
 	})
 }
 
+// VerifyMFALogin xử lý HTTP cho thao tác hoàn tất đăng nhập bằng MFA.
 // @Summary Hoàn tất đăng nhập bằng MFA
 // @Description Xác thực TOTP hoặc recovery code bằng opaque login challenge
 // @Tags MFA
@@ -230,6 +246,7 @@ func (h *AuthHandler) VerifyMFALogin(c *gin.Context) {
 	})
 }
 
+// SetupMFA xử lý HTTP cho thao tác bắt đầu thiết lập MFA.
 // @Summary Bắt đầu thiết lập MFA
 // @Description Xác thực mật khẩu hiện tại và tạo TOTP enrollment mới
 // @Tags MFA
@@ -267,6 +284,7 @@ func (h *AuthHandler) SetupMFA(c *gin.Context) {
 	})
 }
 
+// ConfirmMFA xử lý HTTP cho thao tác xác nhận và bật MFA.
 // @Summary Xác nhận và bật MFA
 // @Description Xác nhận TOTP enrollment và trả recovery codes đúng một lần
 // @Tags MFA
@@ -307,6 +325,7 @@ func (h *AuthHandler) ConfirmMFA(c *gin.Context) {
 	)
 }
 
+// DisableMFA xử lý HTTP cho thao tác tắt MFA.
 // @Summary Tắt MFA
 // @Description Yêu cầu mật khẩu hiện tại và TOTP hoặc recovery code
 // @Tags MFA
@@ -341,6 +360,7 @@ func (h *AuthHandler) DisableMFA(c *gin.Context) {
 	response.Success(c, http.StatusOK, "MFA đã được tắt; vui lòng đăng nhập lại", nil)
 }
 
+// MFAStatus xử lý HTTP cho thao tác trạng thái MFA.
 // @Summary Trạng thái MFA
 // @Description Trả trạng thái bật và số recovery code chưa dùng
 // @Tags MFA
@@ -362,6 +382,7 @@ func (h *AuthHandler) MFAStatus(c *gin.Context) {
 	})
 }
 
+// RegenerateMFARecoveryCodes xử lý HTTP cho thao tác tạo lại recovery codes.
 // @Summary Tạo lại recovery codes
 // @Description Thay toàn bộ recovery codes sau khi xác thực mật khẩu và MFA
 // @Tags MFA
@@ -402,6 +423,7 @@ func (h *AuthHandler) RegenerateMFARecoveryCodes(c *gin.Context) {
 	)
 }
 
+// RefreshToken xử lý HTTP cho thao tác làm mới Access Token.
 // @Summary Làm mới Access Token
 // @Description Cấp lại Access Token mới dựa trên Refresh Token
 // @Tags Authentication
@@ -434,23 +456,77 @@ func (h *AuthHandler) RefreshToken(c *gin.Context) {
 	})
 }
 
+// Logout xử lý HTTP cho thao tác đăng xuất qua access token (kể cả hết hạn) hoặc refresh token.
 // @Summary Đăng xuất
-// @Description Đăng xuất khỏi hệ thống
+// @Description Đăng xuất khỏi hệ thống bằng access token hoặc refresh token
 // @Tags Authentication
 // @Accept json
 // @Produce json
 // @Security BearerAuth
+// @Param request body LogoutRequest false "Thông tin đăng xuất tùy chọn"
 // @Success 200 {object} response.Response
 // @Failure 401 {object} response.Response
 // @Router /auth/logout [post]
 func (h *AuthHandler) Logout(c *gin.Context) {
-	claims := c.MustGet("tokenClaims").(*jwt.Claims)
+	var req LogoutRequest
+	_ = c.ShouldBindJSON(&req)
+	refreshToken := strings.TrimSpace(req.RefreshToken)
+	if refreshToken == "" {
+		refreshToken = strings.TrimSpace(c.GetHeader("X-Refresh-Token"))
+	}
 
-	err := h.logout.Current(
+	var claims *jwt.Claims
+	authHeader := c.GetHeader("Authorization")
+	if authHeader != "" {
+		parts := strings.SplitN(authHeader, " ", 2)
+		if len(parts) == 2 && parts[0] == "Bearer" {
+			tokenStr := parts[1]
+			parsedClaims, _, err := jwt.ParseTokenAllowExpired(tokenStr, h.jwtSecret)
+			if err != nil {
+				if refreshToken == "" {
+					errCode := "ERR_INVALID_TOKEN"
+					errMsg := "Mã token xác thực không hợp lệ"
+					response.Error(c, apperror.NewAppError(errCode, errMsg, http.StatusUnauthorized))
+					return
+				}
+			} else {
+				if parsedClaims.Type != "access" {
+					if refreshToken == "" {
+						response.Error(c, apperror.ErrNotAccessToken)
+						return
+					}
+				} else {
+					claims = parsedClaims
+				}
+			}
+		} else if refreshToken == "" {
+			response.Error(c, apperror.ErrInvalidAuthHeader)
+			return
+		}
+	}
+
+	if claims == nil && refreshToken == "" {
+		response.Error(c, apperror.ErrMissingAuthHeader)
+		return
+	}
+
+	var userID uint64
+	var accessJTI string
+	var expiresAt time.Time
+	if claims != nil {
+		userID = claims.UserID
+		accessJTI = claims.ID
+		expiresAt = claims.ExpiresAt.Time
+	}
+
+	err := h.logout.Session(
 		c.Request.Context(),
-		claims.UserID,
-		claims.ID,
-		claims.ExpiresAt.Time,
+		authapp.LogoutCommand{
+			UserID:       userID,
+			AccessJTI:    accessJTI,
+			ExpiresAt:    expiresAt,
+			RefreshToken: refreshToken,
+		},
 	)
 	if err != nil {
 		response.Error(c, err)
@@ -460,6 +536,7 @@ func (h *AuthHandler) Logout(c *gin.Context) {
 	response.Success(c, http.StatusOK, "Đăng xuất thành công", nil)
 }
 
+// LogoutAll xử lý HTTP cho thao tác đăng xuất khỏi tất cả thiết bị.
 // @Summary Đăng xuất khỏi tất cả thiết bị
 // @Description Hủy tất cả các phiên đăng nhập của người dùng
 // @Tags Authentication
@@ -481,6 +558,7 @@ func (h *AuthHandler) LogoutAll(c *gin.Context) {
 	response.Success(c, http.StatusOK, "Đăng xuất khỏi tất cả thiết bị thành công", nil)
 }
 
+// ForgotPassword xử lý HTTP cho thao tác quên mật khẩu.
 // @Summary Quên mật khẩu
 // @Description Yêu cầu đặt lại mật khẩu — gửi email chứa link/token (không OTP)
 // @Tags Authentication
@@ -510,6 +588,7 @@ func (h *AuthHandler) ForgotPassword(c *gin.Context) {
 	)
 }
 
+// ResetPassword xử lý HTTP cho thao tác đặt lại mật khẩu.
 // @Summary Đặt lại mật khẩu
 // @Description Đặt lại mật khẩu bằng token từ email
 // @Tags Authentication
@@ -541,6 +620,7 @@ func (h *AuthHandler) ResetPassword(c *gin.Context) {
 	response.Success(c, http.StatusOK, "Khôi phục mật khẩu thành công. Vui lòng đăng nhập lại.", nil)
 }
 
+// ChangePassword xử lý HTTP cho thao tác đổi mật khẩu.
 // @Summary Đổi mật khẩu
 // @Description Đổi mật khẩu tài khoản
 // @Tags Authentication
@@ -579,6 +659,7 @@ func (h *AuthHandler) ChangePassword(c *gin.Context) {
 	response.Success(c, http.StatusOK, "Đổi mật khẩu thành công. Vui lòng đăng nhập lại trên các thiết bị.", nil)
 }
 
+// ForceChangePassword xử lý HTTP cho thao tác đổi mật khẩu bắt buộc.
 // @Summary Đổi mật khẩu bắt buộc
 // @Description Đổi mật khẩu khi tài khoản bị yêu cầu thay credential. Không cần Bearer.
 // @Tags Authentication

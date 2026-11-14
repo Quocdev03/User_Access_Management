@@ -18,6 +18,12 @@ sửa các field khác nhau không lost update; không transition account securi
 The three email operations share a one-minute token bucket with capacity 5; 15
 rejected valid requests trigger the configured temporary ban.
 
+> [!NOTE]
+> **Công thức cấu hình Rate Limit giữa Code và Docs**:
+> Theo tài liệu, các tác vụ đổi email và upload avatar có capacity là 5 và abuse threshold là 15 (sau 15 lần vi phạm liên tiếp sẽ kích hoạt ban). Mã nguồn Go (`internal/httpapi/*_routes.go`) sử dụng công thức:
+> `banLimit (code) = capacity + abuseThreshold (docs) = 5 + 15 = 20`
+> tương ứng với tham số `(5, 20)` truyền vào middleware rate limit.
+
 | ID | Path | Behavior |
 | --- | --- | --- |
 | ACCOUNT-EMAIL-CHANGE-REQUEST | `POST /users/me/email/change-request` | Check new email uniqueness, create old/new verification state and notify both addresses |

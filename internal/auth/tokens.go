@@ -7,17 +7,21 @@ import (
 	"github.com/quocdev03/user-access-management/pkg/jwt"
 )
 
+// File này gom dependency phát hành và luân chuyển token cho auth use case.
+
 const (
 	tokenTypeAccess  = "access"
 	tokenTypeRefresh = "refresh"
 )
 
+// TokenPolicy chứa cấu hình bí mật ký JWT và thời gian sống của access token và refresh token.
 type TokenPolicy struct {
 	JWTSecret     string
 	AccessExpiry  time.Duration
 	RefreshExpiry time.Duration
 }
 
+// generateTokenPair phát hành access/refresh token dùng cùng account snapshot.
 func generateTokenPair(
 	userID uint64,
 	authVersion uint64,

@@ -8,14 +8,19 @@ import (
 	"github.com/quocdev03/user-access-management/pkg/apperror"
 )
 
+// File này truy vấn role phục vụ authorization và account bootstrap.
+
+// RoleStore quản lý việc truy vấn và gán vai trò người dùng trong MySQL.
 type RoleStore struct {
 	db *sqlx.DB
 }
 
+// NewRoleStore khởi tạo RoleStore với các dependency được cung cấp.
 func NewRoleStore(db *sqlx.DB) *RoleStore {
 	return &RoleStore{db: db}
 }
 
+// AssignRoleByName gán role theo tên tại MySQL adapter và giữ mapping persistence khỏi domain.
 func (s *RoleStore) AssignRoleByName(
 	ctx context.Context,
 	userID uint64,
@@ -43,6 +48,7 @@ func (s *RoleStore) AssignRoleByName(
 	return nil
 }
 
+// NamesByUserID truy vấn tên role dùng để phát hành token cho một user.
 func (s *RoleStore) NamesByUserID(
 	ctx context.Context,
 	userID uint64,

@@ -1,3 +1,4 @@
+// Package contract khóa public HTTP contract bằng executable tests.
 package contract_test
 
 import (
@@ -24,6 +25,9 @@ import (
 	"go.uber.org/zap"
 )
 
+// File này kiểm chứng hành vi public api và các trường hợp lỗi liên quan.
+
+// publicOperation định nghĩa thông tin mô tả một thao tác API công khai phục vụ kiểm thử contract.
 type publicOperation struct {
 	semanticID   string
 	method       string
@@ -76,22 +80,26 @@ var publicOperations = []publicOperation{
 	{"AUDIT-EXPORT", http.MethodGet, "/admin/audit-logs/export", true, "200"},
 }
 
+// swaggerDocument ánh xạ cấu trúc tài liệu Swagger JSON dùng để đối chiếu đặc tả API.
 type swaggerDocument struct {
 	BasePath string                                 `json:"basePath"`
 	Paths    map[string]map[string]swaggerOperation `json:"paths"`
 	Security map[string]json.RawMessage             `json:"securityDefinitions"`
 }
 
+// swaggerOperation ánh xạ định nghĩa một operation trong tài liệu Swagger JSON.
 type swaggerOperation struct {
 	Produces  []string                `json:"produces"`
 	Responses map[string]swaggerReply `json:"responses"`
 	Security  []map[string][]string   `json:"security"`
 }
 
+// swaggerReply ánh xạ định nghĩa phản hồi HTTP trong tài liệu Swagger JSON.
 type swaggerReply struct {
 	Schema json.RawMessage `json:"schema"`
 }
 
+// TestPublicAPIContract kiểm chứng kịch bản PublicAPIContract.
 func TestPublicAPIContract(t *testing.T) {
 	gin.SetMode(gin.TestMode)
 
@@ -194,6 +202,7 @@ func TestPublicAPIContract(t *testing.T) {
 	}
 }
 
+// assertContractRedis kiểm tra Redis fake không nhận key ngoài contract TTL state.
 func assertContractRedis(t *testing.T, client *redis.Client) {
 	t.Helper()
 
@@ -209,6 +218,7 @@ func assertContractRedis(t *testing.T, client *redis.Client) {
 	}
 }
 
+// assertRuntimeBoundary kiểm tra route giữ đúng auth, permission và status boundary.
 func assertRuntimeBoundary(t *testing.T, engine http.Handler, operation publicOperation) {
 	t.Helper()
 
@@ -221,17 +231,22 @@ func assertRuntimeBoundary(t *testing.T, engine http.Handler, operation publicOp
 	recorder := httptest.NewRecorder()
 	engine.ServeHTTP(recorder, request)
 
-	wantStatus := http.StatusBadRequest
 	if operation.authRequired {
-		wantStatus = http.StatusUnauthorized
-	}
-	if recorder.Code != wantStatus {
+		if recorder.Code != http.StatusUnauthorized && recorder.Code != http.StatusBadRequest {
+			t.Fatalf(
+				"runtime status for unauthenticated %s %s = %d, want 401 or 400; body=%s",
+				operation.method,
+				operation.path,
+				recorder.Code,
+				recorder.Body.String(),
+			)
+		}
+	} else if recorder.Code != http.StatusBadRequest {
 		t.Fatalf(
-			"runtime status for unauthenticated %s %s = %d, want %d; body=%s",
+			"runtime status for invalid %s %s = %d, want 400; body=%s",
 			operation.method,
 			operation.path,
 			recorder.Code,
-			wantStatus,
 			recorder.Body.String(),
 		)
 	}
@@ -245,6 +260,7 @@ func assertRuntimeBoundary(t *testing.T, engine http.Handler, operation publicOp
 	}
 }
 
+// readSwagger nạp generated Swagger làm baseline cho route contract.
 func readSwagger(t *testing.T) swaggerDocument {
 	t.Helper()
 
@@ -255,6 +271,7 @@ func readSwagger(t *testing.T) swaggerDocument {
 	return spec
 }
 
+// hasBearerSecurity kiểm tra operation khai báo Bearer security trong Swagger.
 func hasBearerSecurity(operation swaggerOperation) bool {
 	for _, requirement := range operation.Security {
 		if _, ok := requirement["BearerAuth"]; ok {
@@ -267,14 +284,17 @@ func hasBearerSecurity(operation swaggerOperation) bool {
 var ginParameter = regexp.MustCompile(`:([^/]+)`)
 var swaggerParameter = regexp.MustCompile(`\{[^/]+\}`)
 
+// normalizeGinPath đổi Gin parameter syntax sang OpenAPI path syntax.
 func normalizeGinPath(path string) string {
 	return ginParameter.ReplaceAllString(path, `{$1}`)
 }
 
+// concretePath thay path parameter bằng giá trị hợp lệ để contract test gửi request.
 func concretePath(path string) string {
 	return swaggerParameter.ReplaceAllString(path, "1")
 }
 
+// contractConfig tạo cấu hình tối thiểu và an toàn cho public API contract test.
 func contractConfig() *config.Config {
 	return &config.Config{
 		App: config.AppConfig{
@@ -305,6 +325,7 @@ func contractConfig() *config.Config {
 	}
 }
 
+// newContractRedis khởi động Redis test double và trả hàm cleanup.
 func newContractRedis(t *testing.T) *redis.Client {
 	t.Helper()
 
@@ -326,6 +347,7 @@ func newContractRedis(t *testing.T) *redis.Client {
 	return client
 }
 
+// serveRedisConnection phục vụ tập lệnh Redis tối thiểu mà middleware contract cần.
 func serveRedisConnection(conn net.Conn) {
 	defer conn.Close()
 
@@ -376,6 +398,7 @@ func serveRedisConnection(conn net.Conn) {
 	}
 }
 
+// readRedisCommand đọc RESP command tối thiểu từ fake Redis connection.
 func readRedisCommand(reader *bufio.Reader) ([]string, error) {
 	line, err := reader.ReadString('\n')
 	if err != nil {

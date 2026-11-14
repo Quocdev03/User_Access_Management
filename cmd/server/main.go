@@ -1,6 +1,4 @@
-// Package main là điểm bắt đầu (entry point) cho User Access Management service.
-// Nó nạp cấu hình, thiết lập MySQL/Redis, cấu hình HTTP router
-// và quản lý quá trình tắt server an toàn.
+// Package main khởi động HTTP API và quản lý vòng đời các dependency của UAM.
 package main
 
 import (
@@ -23,6 +21,9 @@ import (
 	"go.uber.org/zap"
 )
 
+// File này wire HTTP server với domain use case, store và lifecycle shutdown.
+
+// main khởi tạo dependency, phục vụ HTTP và đóng tài nguyên theo tín hiệu hệ điều hành.
 // @title User Access Management API
 // @version 1.0
 // @description Hệ thống quản lý truy cập người dùng RESTful API bằng Golang/Gin.
@@ -34,11 +35,6 @@ import (
 // @securityDefinitions.apikey BearerAuth
 // @in header
 // @name Authorization
-// main là hàm chính khởi động toàn bộ ứng dụng.
-// Nó nạp biến môi trường, khởi tạo logger toàn cục, thiết lập
-// các kết nối đến MySQL và Redis, sau đó gắn (mount) Gin HTTP router.
-// Hàm này cũng lắng nghe các tín hiệu ngắt từ hệ điều hành (SIGINT, SIGTERM)
-// để đảm bảo mọi tài nguyên và kết nối được đóng an toàn trước khi tiến trình kết thúc.
 func main() {
 	cfg, err := config.Load(".")
 	if err != nil {
@@ -55,14 +51,14 @@ func main() {
 
 	logr.Info("Starting User Access Management Service...", zap.String("env", cfg.App.Env))
 
-	db, err := database.ConnectMySQL(cfg.Database)
+	db, err := database.ConnectMySQL(cfg.Database.MySQLOptions())
 	if err != nil {
 		logr.Fatal("Failed to connect to MySQL", zap.Error(err))
 	}
 	defer db.Close()
 	logr.Info("Connected to MySQL successfully")
 
-	redisClient, err := database.ConnectRedis(cfg.Redis)
+	redisClient, err := database.ConnectRedis(cfg.Redis.RedisOptions())
 	if err != nil {
 		logr.Fatal("Failed to connect to Redis", zap.Error(err))
 	}
@@ -96,7 +92,6 @@ func main() {
 		}
 	}()
 
-	// Wait for interrupt signal to gracefully shutdown the server
 	quit := make(chan os.Signal, 1)
 	signal.Notify(quit, syscall.SIGINT, syscall.SIGTERM)
 	<-quit

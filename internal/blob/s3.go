@@ -9,6 +9,7 @@ import (
 	"encoding/hex"
 	"fmt"
 	"io"
+	"net/http"
 	"net/url"
 	"path"
 	"strings"
@@ -21,17 +22,23 @@ import (
 	"github.com/quocdev03/user-access-management/internal/config"
 )
 
+// File này lưu, đọc và xóa blob qua S3-compatible API.
+
+// s3API định nghĩa interface trừu tượng hóa các phương thức S3 SDK được sử dụng.
 type s3API interface {
+	// PutObject ghi object bằng S3 client và tôn trọng context cancellation.
 	PutObject(
 		context.Context,
 		*s3.PutObjectInput,
 		...func(*s3.Options),
 	) (*s3.PutObjectOutput, error)
+	// DeleteObject xóa object bằng S3 client và tôn trọng context cancellation.
 	DeleteObject(
 		context.Context,
 		*s3.DeleteObjectInput,
 		...func(*s3.Options),
 	) (*s3.DeleteObjectOutput, error)
+	// GetObject mở response body của object để caller đọc và đóng.
 	GetObject(
 		context.Context,
 		*s3.GetObjectInput,
@@ -39,12 +46,14 @@ type s3API interface {
 	) (*s3.GetObjectOutput, error)
 }
 
+// S3Store triển khai Store lưu trữ và quản lý đối tượng trên dịch vụ tương thích AWS S3.
 type S3Store struct {
 	client        s3API
 	bucket        string
 	publicBaseURL string
 }
 
+// NewS3Store khởi tạo S3Store với các dependency được cung cấp.
 func NewS3Store(ctx context.Context, cfg config.BlobConfig) (*S3Store, error) {
 	publicURL, err := url.Parse(cfg.PublicBaseURL)
 	if err != nil ||
@@ -84,6 +93,7 @@ func NewS3Store(ctx context.Context, cfg config.BlobConfig) (*S3Store, error) {
 	}, nil
 }
 
+// Put ghi object vào bucket sau khi chuẩn hóa key và nhận diện content type.
 func (s *S3Store) Put(
 	ctx context.Context,
 	key string,
@@ -99,19 +109,44 @@ func (s *S3Store) Put(
 	}
 	checksum := sha256.Sum256(body)
 	contentLength := int64(len(body))
+	contentType := detectBlobContentType(objectKey, body)
 	if _, err := s.client.PutObject(ctx, &s3.PutObjectInput{
-		Bucket:            aws.String(s.bucket),
-		Key:               aws.String(objectKey),
-		Body:              bytes.NewReader(body),
-		ContentLength:     aws.Int64(contentLength),
-		ChecksumAlgorithm: types.ChecksumAlgorithmSha256,
-		ChecksumSHA256:    aws.String(base64.StdEncoding.EncodeToString(checksum[:])),
+		Bucket:             aws.String(s.bucket),
+		Key:                aws.String(objectKey),
+		Body:               bytes.NewReader(body),
+		ContentLength:      aws.Int64(contentLength),
+		ContentType:        aws.String(contentType),
+		ContentDisposition: aws.String("inline"),
+		ChecksumAlgorithm:  types.ChecksumAlgorithmSha256,
+		ChecksumSHA256:     aws.String(base64.StdEncoding.EncodeToString(checksum[:])),
 	}); err != nil {
 		return fmt.Errorf("put S3 blob: %w", err)
 	}
 	return nil
 }
 
+// detectBlobContentType xác định MIME type của file dựa trên byte content hoặc phần mở rộng.
+func detectBlobContentType(key string, data []byte) string {
+	detected := http.DetectContentType(data)
+	if detected == "application/octet-stream" || detected == "text/plain; charset=utf-8" {
+		ext := strings.ToLower(path.Ext(key))
+		switch ext {
+		case ".png":
+			return "image/png"
+		case ".jpg", ".jpeg":
+			return "image/jpeg"
+		case ".webp":
+			return "image/webp"
+		case ".gif":
+			return "image/gif"
+		case ".svg":
+			return "image/svg+xml"
+		}
+	}
+	return detected
+}
+
+// Delete xóa object khỏi bucket và giữ idempotency của blob boundary.
 func (s *S3Store) Delete(ctx context.Context, key string) error {
 	objectKey, err := normalizeS3Key(key)
 	if err != nil {
@@ -126,6 +161,7 @@ func (s *S3Store) Delete(ctx context.Context, key string) error {
 	return nil
 }
 
+// URL tạo địa chỉ đọc object theo endpoint và bucket đã cấu hình.
 func (s *S3Store) URL(key string) string {
 	switch {
 	case key == "":
@@ -146,6 +182,7 @@ func (s *S3Store) URL(key string) string {
 	return s.publicBaseURL + "/" + strings.Join(segments, "/")
 }
 
+// VerifySHA256 đọc object và so sánh digest constant-time với checksum mong đợi.
 func (s *S3Store) VerifySHA256(
 	ctx context.Context,
 	key string,
@@ -178,6 +215,7 @@ func (s *S3Store) VerifySHA256(
 	return nil
 }
 
+// normalizeS3Key từ chối object key tuyệt đối hoặc chứa path traversal.
 func normalizeS3Key(key string) (string, error) {
 	normalized := strings.TrimSpace(strings.TrimPrefix(key, "/uploads/"))
 	if normalized == "" ||
@@ -196,6 +234,7 @@ func normalizeS3Key(key string) (string, error) {
 	return clean, nil
 }
 
+// CanonicalAvatarKey tạo object key ổn định theo user ID và phần mở rộng đã kiểm tra.
 func CanonicalAvatarKey(key string) (string, error) {
 	return normalizeS3Key(key)
 }

@@ -14,6 +14,9 @@ import (
 	"github.com/quocdev03/user-access-management/pkg/validator"
 )
 
+// File này bind request tài khoản và ánh xạ kết quả use case sang HTTP.
+
+// UserHandler tiếp nhận và xử lý các HTTP request quản lý thông tin tài khoản, hồ sơ cá nhân và phiên đăng nhập.
 type UserHandler struct {
 	profile        *accountapp.Profile
 	email          *accountapp.Email
@@ -21,6 +24,7 @@ type UserHandler struct {
 	sessionManager *sessionapp.Manager
 }
 
+// NewUserHandler khởi tạo UserHandler với các dependency được cung cấp.
 func NewUserHandler(
 	profile *accountapp.Profile,
 	email *accountapp.Email,
@@ -35,6 +39,7 @@ func NewUserHandler(
 	}
 }
 
+// getUserID lấy người dùng ID tại HTTP boundary.
 func getUserID(c *gin.Context) (uint64, bool) {
 	userIDVal, exists := c.Get("userID")
 	if !exists {
@@ -49,6 +54,7 @@ func getUserID(c *gin.Context) (uint64, bool) {
 	return userID, true
 }
 
+// GetProfile xử lý HTTP cho thao tác lấy thông tin cá nhân.
 // @Summary Lấy thông tin cá nhân
 // @Description Lấy thông tin hồ sơ của người dùng hiện tại
 // @Tags Users
@@ -84,6 +90,7 @@ func (h *UserHandler) GetProfile(c *gin.Context) {
 	})
 }
 
+// UpdateProfile xử lý HTTP cho thao tác cập nhật hồ sơ.
 // @Summary Cập nhật hồ sơ
 // @Description Cập nhật thông tin hồ sơ của người dùng hiện tại
 // @Tags Users
@@ -120,6 +127,7 @@ func (h *UserHandler) UpdateProfile(c *gin.Context) {
 	response.Success(c, http.StatusOK, "Cập nhật hồ sơ thành công", nil)
 }
 
+// RequestEmailChange xử lý HTTP cho thao tác yêu cầu đổi email.
 // @Summary Yêu cầu đổi email
 // @Description Yêu cầu đổi địa chỉ email, hệ thống sẽ gửi OTP
 // @Tags Users
@@ -162,6 +170,7 @@ func (h *UserHandler) RequestEmailChange(c *gin.Context) {
 	)
 }
 
+// VerifyEmailChange xử lý HTTP cho thao tác xác thực đổi email.
 // @Summary Xác thực đổi email
 // @Description Nhập mã OTP để hoàn tất quá trình đổi email
 // @Tags Users
@@ -199,6 +208,7 @@ func (h *UserHandler) VerifyEmailChange(c *gin.Context) {
 	response.Success(c, http.StatusOK, "Thay đổi email thành công. Phiên hoạt động cũ của bạn đã được thu hồi.", nil)
 }
 
+// UploadAvatar xử lý HTTP cho thao tác tải lên ảnh đại diện.
 // @Summary Tải lên ảnh đại diện
 // @Description Upload ảnh đại diện mới
 // @Tags Users
@@ -257,6 +267,7 @@ func (h *UserHandler) UploadAvatar(c *gin.Context) {
 	})
 }
 
+// DeleteAvatar xử lý HTTP cho thao tác xóa ảnh đại diện.
 // @Summary Xóa ảnh đại diện
 // @Description Xóa ảnh đại diện hiện tại
 // @Tags Users
@@ -283,6 +294,7 @@ func (h *UserHandler) DeleteAvatar(c *gin.Context) {
 	response.Success(c, http.StatusOK, "Xóa ảnh đại diện thành công", nil)
 }
 
+// GetSessions xử lý HTTP cho thao tác lấy danh sách phiên đăng nhập.
 // @Summary Lấy danh sách phiên đăng nhập
 // @Description Lấy danh sách các phiên đăng nhập đang hoạt động của người dùng
 // @Tags Users
@@ -319,6 +331,7 @@ func (h *UserHandler) GetSessions(c *gin.Context) {
 	response.Success(c, http.StatusOK, "Thành công", result)
 }
 
+// RevokeSession xử lý HTTP cho thao tác xóa phiên đăng nhập.
 // @Summary Xóa phiên đăng nhập
 // @Description Hủy một phiên đăng nhập cụ thể theo ID
 // @Tags Users
@@ -347,6 +360,7 @@ func (h *UserHandler) RevokeSession(c *gin.Context) {
 	response.Success(c, http.StatusOK, "Đã xóa phiên", nil)
 }
 
+// GetDevices xử lý HTTP cho thao tác lấy danh sách thiết bị.
 // @Summary Lấy danh sách thiết bị
 // @Description Lấy thông tin các thiết bị đã đăng nhập
 // @Tags Users
@@ -381,6 +395,7 @@ func (h *UserHandler) GetDevices(c *gin.Context) {
 	response.Success(c, http.StatusOK, "Thành công", res)
 }
 
+// ResendChangeEmailOTP xử lý HTTP cho thao tác gửi lại OTP đổi email.
 // @Summary Gửi lại OTP đổi email
 // @Description Yêu cầu gửi lại OTP cho thao tác đổi email
 // @Tags Users

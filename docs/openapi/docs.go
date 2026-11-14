@@ -421,8 +421,8 @@ const docTemplate = `{
                     },
                     {
                         "type": "integer",
-                        "description": "Kích thước trang",
-                        "name": "page_size",
+                        "description": "Số lượng bản ghi mỗi trang",
+                        "name": "per_page",
                         "in": "query"
                     },
                     {
@@ -445,8 +445,20 @@ const docTemplate = `{
                     },
                     {
                         "type": "string",
-                        "description": "Tìm kiếm theo username/email",
-                        "name": "search",
+                        "description": "Tìm kiếm theo username",
+                        "name": "username",
+                        "in": "query"
+                    },
+                    {
+                        "type": "string",
+                        "description": "Tìm kiếm theo email",
+                        "name": "email",
+                        "in": "query"
+                    },
+                    {
+                        "type": "string",
+                        "description": "Lọc theo role",
+                        "name": "role",
                         "in": "query"
                     }
                 ],
@@ -464,8 +476,11 @@ const docTemplate = `{
                                         "data": {
                                             "type": "array",
                                             "items": {
-                                                "$ref": "#/definitions/internal_httpapi.UserProfileResponse"
+                                                "$ref": "#/definitions/internal_httpapi.AdminUserListItem"
                                             }
+                                        },
+                                        "meta": {
+                                            "$ref": "#/definitions/internal_httpapi.PaginationMeta"
                                         }
                                     }
                                 }
@@ -1025,7 +1040,7 @@ const docTemplate = `{
         },
         "/auth/login": {
             "post": {
-                "description": "Đăng nhập vào hệ thống",
+                "description": "Đăng nhập vào hệ thống (trả về access/refresh token nếu không có MFA, hoặc trả về MFA challenge nếu đã kích hoạt MFA)",
                 "consumes": [
                     "application/json"
                 ],
@@ -1049,7 +1064,7 @@ const docTemplate = `{
                 ],
                 "responses": {
                     "200": {
-                        "description": "OK",
+                        "description": "Yêu cầu xác thực MFA (khi tài khoản đã kích hoạt MFA)",
                         "schema": {
                             "allOf": [
                                 {
@@ -1059,7 +1074,7 @@ const docTemplate = `{
                                     "type": "object",
                                     "properties": {
                                         "data": {
-                                            "$ref": "#/definitions/internal_httpapi.LoginResponse"
+                                            "$ref": "#/definitions/internal_httpapi.MFALoginChallengeResponse"
                                         }
                                     }
                                 }
@@ -1094,7 +1109,7 @@ const docTemplate = `{
                         "BearerAuth": []
                     }
                 ],
-                "description": "Đăng xuất khỏi hệ thống",
+                "description": "Đăng xuất khỏi hệ thống bằng access token hoặc refresh token",
                 "consumes": [
                     "application/json"
                 ],
@@ -1105,6 +1120,16 @@ const docTemplate = `{
                     "Authentication"
                 ],
                 "summary": "Đăng xuất",
+                "parameters": [
+                    {
+                        "description": "Thông tin đăng xuất tùy chọn",
+                        "name": "request",
+                        "in": "body",
+                        "schema": {
+                            "$ref": "#/definitions/internal_httpapi.LogoutRequest"
+                        }
+                    }
+                ],
                 "responses": {
                     "200": {
                         "description": "OK",
@@ -2306,7 +2331,7 @@ const docTemplate = `{
         "internal_httpapi.AdminUpdateUserRequest": {
             "type": "object",
             "properties": {
-                "avatar_url": {
+                "avatar_object_key": {
                     "type": "string"
                 },
                 "date_of_birth": {
@@ -2327,6 +2352,47 @@ const docTemplate = `{
                     "type": "string",
                     "maxLength": 20,
                     "minLength": 9
+                }
+            }
+        },
+        "internal_httpapi.AdminUserListItem": {
+            "type": "object",
+            "properties": {
+                "avatar_url": {
+                    "type": "string"
+                },
+                "created_at": {
+                    "type": "string"
+                },
+                "date_of_birth": {
+                    "type": "string"
+                },
+                "email": {
+                    "type": "string"
+                },
+                "email_verified": {
+                    "type": "boolean"
+                },
+                "full_name": {
+                    "type": "string"
+                },
+                "id": {
+                    "type": "integer"
+                },
+                "phone": {
+                    "type": "string"
+                },
+                "roles": {
+                    "type": "array",
+                    "items": {
+                        "type": "string"
+                    }
+                },
+                "status": {
+                    "type": "string"
+                },
+                "username": {
+                    "type": "string"
                 }
             }
         },
@@ -2474,6 +2540,14 @@ const docTemplate = `{
                 }
             }
         },
+        "internal_httpapi.LogoutRequest": {
+            "type": "object",
+            "properties": {
+                "refresh_token": {
+                    "type": "string"
+                }
+            }
+        },
         "internal_httpapi.MFAConfirmRequest": {
             "type": "object",
             "required": [
@@ -2482,6 +2556,17 @@ const docTemplate = `{
             "properties": {
                 "code": {
                     "type": "string"
+                }
+            }
+        },
+        "internal_httpapi.MFALoginChallengeResponse": {
+            "type": "object",
+            "properties": {
+                "challenge": {
+                    "type": "string"
+                },
+                "mfa_required": {
+                    "type": "boolean"
                 }
             }
         },
@@ -2559,6 +2644,23 @@ const docTemplate = `{
                     "type": "boolean"
                 },
                 "recovery_codes_remaining": {
+                    "type": "integer"
+                }
+            }
+        },
+        "internal_httpapi.PaginationMeta": {
+            "type": "object",
+            "properties": {
+                "page": {
+                    "type": "integer"
+                },
+                "per_page": {
+                    "type": "integer"
+                },
+                "total": {
+                    "type": "integer"
+                },
+                "total_pages": {
                     "type": "integer"
                 }
             }

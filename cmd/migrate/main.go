@@ -1,3 +1,4 @@
+// Package main cung cấp lệnh áp dụng migration MySQL của UAM.
 package main
 
 import (
@@ -7,13 +8,16 @@ import (
 	"github.com/quocdev03/user-access-management/pkg/database"
 )
 
+// File này nạp cấu hình MySQL và áp dụng các migration chưa chạy.
+
+// main kết nối MySQL và áp dụng migration trước khi kết thúc tiến trình.
 func main() {
 	cfg, err := config.Load(".")
 	if err != nil {
 		log.Fatalf("Failed to load config: %v", err)
 	}
 	if err := database.RunMigrations(
-		cfg.Database,
+		cfg.Database.MySQLOptions(),
 		"migrations",
 		cfg.App.Env,
 	); err != nil {

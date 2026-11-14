@@ -13,6 +13,9 @@ import (
 	"github.com/quocdev03/user-access-management/pkg/apperror"
 )
 
+// File này thực hiện query và command MySQL cho canonical account.
+
+// Account ánh xạ bản ghi tài khoản người dùng từ bảng accounts trong MySQL.
 type Account struct {
 	ID                     uint64                 `db:"id"`
 	Username               string                 `db:"username"`
@@ -35,10 +38,12 @@ const accountProjection = `id, username, email, password_hash, lifecycle_state,
 	failed_login_attempts, password_change_required, auth_version,
 	last_login_at, created_at, updated_at`
 
+// AccountStore quản lý các thao tác CRUD và cập nhật trạng thái tài khoản trong MySQL.
 type AccountStore struct {
 	db *sqlx.DB
 }
 
+// RegistrationAccount chứa dữ liệu cần thiết để tạo mới một tài khoản trong quá trình đăng ký.
 type RegistrationAccount struct {
 	ID           uint64
 	Username     string
@@ -46,14 +51,17 @@ type RegistrationAccount struct {
 	PasswordHash string
 }
 
+// NewAccountStore khởi tạo AccountStore với các dependency được cung cấp.
 func NewAccountStore(db *sqlx.DB) *AccountStore {
 	return &AccountStore{db: db}
 }
 
+// FindByID truy vấn theo ID tại MySQL adapter và giữ mapping persistence khỏi domain.
 func (s *AccountStore) FindByID(ctx context.Context, id uint64) (*Account, error) {
 	return s.findByID(ctx, id, false)
 }
 
+// FindByIDForUpdate truy vấn theo ID cho cập nhật và khóa bản ghi trong transaction hiện tại để tránh lost update.
 func (s *AccountStore) FindByIDForUpdate(ctx context.Context, id uint64) (*Account, error) {
 	if !inTransaction(ctx) {
 		return nil, fmt.Errorf("FindByIDForUpdate requires a MySQL transaction")
@@ -61,10 +69,12 @@ func (s *AccountStore) FindByIDForUpdate(ctx context.Context, id uint64) (*Accou
 	return s.findByID(ctx, id, true)
 }
 
+// FindByEmail truy vấn theo email tại MySQL adapter và giữ mapping persistence khỏi domain.
 func (s *AccountStore) FindByEmail(ctx context.Context, email string) (*Account, error) {
 	return s.findByEmail(ctx, email, false)
 }
 
+// FindByEmailForUpdate truy vấn theo email cho cập nhật và khóa bản ghi trong transaction hiện tại để tránh lost update.
 func (s *AccountStore) FindByEmailForUpdate(
 	ctx context.Context,
 	email string,
@@ -75,6 +85,7 @@ func (s *AccountStore) FindByEmailForUpdate(
 	return s.findByEmail(ctx, email, true)
 }
 
+// CreateRegistration tạo registration tại MySQL adapter và giữ mapping persistence khỏi domain.
 func (s *AccountStore) CreateRegistration(
 	ctx context.Context,
 	account *RegistrationAccount,
@@ -118,6 +129,7 @@ func (s *AccountStore) CreateRegistration(
 	return nil
 }
 
+// findByID truy vấn theo ID tại MySQL adapter và giữ mapping persistence khỏi domain.
 func (s *AccountStore) findByID(ctx context.Context, id uint64, forUpdate bool) (*Account, error) {
 	query := `SELECT ` + accountProjection + ` FROM users WHERE id = ? LIMIT 1`
 	if forUpdate {
@@ -133,6 +145,7 @@ func (s *AccountStore) findByID(ctx context.Context, id uint64, forUpdate bool) 
 	return &account, nil
 }
 
+// findByEmail truy vấn theo email tại MySQL adapter và giữ mapping persistence khỏi domain.
 func (s *AccountStore) findByEmail(
 	ctx context.Context,
 	email string,
@@ -152,6 +165,7 @@ func (s *AccountStore) findByEmail(
 	return &account, nil
 }
 
+// State chuyển account row thành canonical state để domain policy xử lý.
 func (a Account) State() (accountstate.State, error) {
 	state := accountstate.State{
 		Lifecycle:              a.Lifecycle,
@@ -168,6 +182,7 @@ func (a Account) State() (accountstate.State, error) {
 	return state, nil
 }
 
+// UpdateState cập nhật trạng thái tại MySQL adapter và giữ mapping persistence khỏi domain.
 func (s *AccountStore) UpdateState(
 	ctx context.Context,
 	accountID uint64,
@@ -211,6 +226,7 @@ func (s *AccountStore) UpdateState(
 	return nil
 }
 
+// UpdateCredential cập nhật credential tại MySQL adapter và giữ mapping persistence khỏi domain.
 func (s *AccountStore) UpdateCredential(
 	ctx context.Context,
 	accountID uint64,
@@ -257,6 +273,7 @@ func (s *AccountStore) UpdateCredential(
 	return nil
 }
 
+// UpdateEmail cập nhật email tại MySQL adapter và giữ mapping persistence khỏi domain.
 func (s *AccountStore) UpdateEmail(
 	ctx context.Context,
 	accountID uint64,
@@ -300,6 +317,7 @@ func (s *AccountStore) UpdateEmail(
 	return requireOneRow(result, "update account email")
 }
 
+// UpdateLoginState cập nhật đăng nhập trạng thái tại MySQL adapter và giữ mapping persistence khỏi domain.
 func (s *AccountStore) UpdateLoginState(
 	ctx context.Context,
 	accountID uint64,
@@ -336,7 +354,7 @@ func (s *AccountStore) UpdateLoginState(
 	if err != nil {
 		return fmt.Errorf("update account login state: %w", err)
 	}
-	// MySQL reports zero changed rows when two logins persist the same
-	// second-level state. The caller already locked and loaded this account.
+	// MySQL có thể báo zero changed rows khi hai lần đăng nhập ghi cùng state theo giây.
+	// Caller đã khóa và đọc account nên đây không phải lost update.
 	return nil
 }

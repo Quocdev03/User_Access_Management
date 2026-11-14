@@ -1,3 +1,4 @@
+// Package database khởi tạo kết nối, migration và transaction cho MySQL/Redis.
 package database
 
 import (
@@ -8,15 +9,17 @@ import (
 	"github.com/golang-migrate/migrate/v4"
 	migrate_mysql "github.com/golang-migrate/migrate/v4/database/mysql"
 	_ "github.com/golang-migrate/migrate/v4/source/file"
-	"github.com/quocdev03/user-access-management/internal/config"
 )
 
+// File này chạy migration theo thứ tự từ embedded migration source.
+
+// RunMigrations chạy migrations tại database boundary và giữ nguyên lỗi hệ thống cho caller.
 func RunMigrations(
-	cfg config.DatabaseConfig,
+	opts MySQLOptions,
 	migrationsPath string,
 	appEnv string,
 ) (resultErr error) {
-	mysqlCfg, err := newMySQLConfig(cfg, true)
+	mysqlCfg, err := newMySQLConfig(opts, true)
 	if err != nil {
 		return err
 	}

@@ -10,6 +10,9 @@ import (
 	"github.com/jmoiron/sqlx"
 )
 
+// File này lưu và consume password-reset challenge trong MySQL.
+
+// PasswordResetToken ánh xạ bản ghi token đặt lại mật khẩu từ bảng password_reset_tokens trong MySQL.
 type PasswordResetToken struct {
 	ID          uint64     `db:"id"`
 	UserID      uint64     `db:"user_id"`
@@ -20,14 +23,17 @@ type PasswordResetToken struct {
 	CreatedAt   time.Time  `db:"created_at"`
 }
 
+// PasswordResetStore quản lý việc tạo, kiểm tra và vô hiệu hóa token đặt lại mật khẩu trong MySQL.
 type PasswordResetStore struct {
 	db *sqlx.DB
 }
 
+// NewPasswordResetStore khởi tạo PasswordResetStore với các dependency được cung cấp.
 func NewPasswordResetStore(db *sqlx.DB) *PasswordResetStore {
 	return &PasswordResetStore{db: db}
 }
 
+// Create lưu password-reset challenge trong transaction hiện tại.
 func (s *PasswordResetStore) Create(
 	ctx context.Context,
 	userID uint64,
@@ -54,6 +60,7 @@ func (s *PasswordResetStore) Create(
 	return uint64(id), nil
 }
 
+// FindByTokenHash truy vấn theo token băm tại MySQL adapter và giữ mapping persistence khỏi domain.
 func (s *PasswordResetStore) FindByTokenHash(
 	ctx context.Context,
 	tokenHash string,
@@ -61,6 +68,7 @@ func (s *PasswordResetStore) FindByTokenHash(
 	return s.find(ctx, "token_hash = ?", tokenHash, false)
 }
 
+// FindByIDForUpdate truy vấn theo ID cho cập nhật và khóa bản ghi trong transaction hiện tại để tránh lost update.
 func (s *PasswordResetStore) FindByIDForUpdate(
 	ctx context.Context,
 	id uint64,
@@ -71,6 +79,7 @@ func (s *PasswordResetStore) FindByIDForUpdate(
 	return s.find(ctx, "id = ?", id, true)
 }
 
+// find truy vấn find tại MySQL adapter và giữ mapping persistence khỏi domain.
 func (s *PasswordResetStore) find(
 	ctx context.Context,
 	predicate string,
@@ -96,6 +105,7 @@ func (s *PasswordResetStore) find(
 	return &token, nil
 }
 
+// Consume đánh dấu reset token đã dùng bằng conditional update.
 func (s *PasswordResetStore) Consume(
 	ctx context.Context,
 	id uint64,
@@ -115,6 +125,7 @@ func (s *PasswordResetStore) Consume(
 	return requireOneRow(result, "consume password reset token")
 }
 
+// InvalidateActiveByUser vô hiệu hóa active theo người dùng tại MySQL adapter và giữ mapping persistence khỏi domain.
 func (s *PasswordResetStore) InvalidateActiveByUser(
 	ctx context.Context,
 	userID uint64,
@@ -132,6 +143,7 @@ func (s *PasswordResetStore) InvalidateActiveByUser(
 	return nil
 }
 
+// DeleteExpiredBatch xóa expired batch tại MySQL adapter và giữ mapping persistence khỏi domain.
 func (s *PasswordResetStore) DeleteExpiredBatch(
 	ctx context.Context,
 	threshold time.Time,

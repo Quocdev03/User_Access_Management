@@ -22,11 +22,14 @@ import (
 	"github.com/quocdev03/user-access-management/pkg/database"
 )
 
+// File này kiểm chứng tích hợp auth integration với các dependency runtime liên quan.
+
 var (
 	authMigrationOnce sync.Once
 	authMigrationErr  error
 )
 
+// TestRegistrationAndEmailVerificationUseDurableWorkflow kiểm chứng kịch bản RegistrationAndEmailVerificationUseDurableWorkflow.
 func TestRegistrationAndEmailVerificationUseDurableWorkflow(t *testing.T) {
 	db := openAuthIntegrationDB(t)
 	registration, verification, codec := authFixture(t, db)
@@ -114,6 +117,7 @@ func TestRegistrationAndEmailVerificationUseDurableWorkflow(t *testing.T) {
 	)
 }
 
+// TestConcurrentVerificationHasOneWinner kiểm chứng kịch bản ConcurrentVerificationHasOneWinner.
 func TestConcurrentVerificationHasOneWinner(t *testing.T) {
 	db := openAuthIntegrationDB(t)
 	registration, verification, codec := authFixture(t, db)
@@ -162,6 +166,7 @@ func TestConcurrentVerificationHasOneWinner(t *testing.T) {
 	}
 }
 
+// TestConcurrentResendLeavesOneActiveChallenge kiểm chứng kịch bản ConcurrentResendLeavesOneActiveChallenge.
 func TestConcurrentResendLeavesOneActiveChallenge(t *testing.T) {
 	db := openAuthIntegrationDB(t)
 	registration, verification, _ := authFixture(t, db)
@@ -215,6 +220,7 @@ func TestConcurrentResendLeavesOneActiveChallenge(t *testing.T) {
 	)
 }
 
+// authFixture tạo account cùng verification challenge cho auth integration test.
 func authFixture(
 	t *testing.T,
 	db *sqlx.DB,
@@ -246,6 +252,7 @@ func authFixture(
 	return registration, verification, codec
 }
 
+// verificationOTP giải mã OTP từ outbox fixture thay vì đọc plaintext persistence.
 func verificationOTP(
 	t *testing.T,
 	db *sqlx.DB,
@@ -273,6 +280,7 @@ func verificationOTP(
 	return message.Secret
 }
 
+// differentOTP tạo OTP hợp lệ về định dạng nhưng khác giá trị đầu vào.
 func differentOTP(otp string) string {
 	if strings.HasPrefix(otp, "0") {
 		return "1" + otp[1:]
@@ -280,6 +288,7 @@ func differentOTP(otp string) string {
 	return "0" + otp[1:]
 }
 
+// assertScalar đọc một scalar MySQL và so sánh với giá trị mong đợi.
 func assertScalar(t *testing.T, db *sqlx.DB, query string, args ...any) {
 	t.Helper()
 	want := args[len(args)-1].(int)
@@ -293,6 +302,7 @@ func assertScalar(t *testing.T, db *sqlx.DB, query string, args ...any) {
 	}
 }
 
+// openAuthIntegrationDB kết nối disposable MySQL cho auth integration test.
 func openAuthIntegrationDB(t *testing.T) *sqlx.DB {
 	t.Helper()
 	name := os.Getenv("UAM_AUTH_TEST_DB_NAME")
@@ -307,7 +317,7 @@ func openAuthIntegrationDB(t *testing.T) *sqlx.DB {
 	user := os.Getenv("UAM_AUTH_TEST_DB_USER")
 	password := os.Getenv("UAM_AUTH_TEST_DB_PASSWORD")
 	authMigrationOnce.Do(func() {
-		authMigrationErr = database.RunMigrations(config.DatabaseConfig{
+		authMigrationErr = database.RunMigrations(database.MySQLOptions{
 			Host:     host,
 			Port:     port,
 			Name:     name,

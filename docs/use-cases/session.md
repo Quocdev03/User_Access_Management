@@ -1,6 +1,6 @@
 # Session Use Cases
 
-All operations require bearer access and global rate limiting.
+All operations require bearer access and global rate limiting. Quy tắc toàn diện về vòng đời phiên, giới hạn phiên (session cap), xoay vòng token, kiểm soát đồng thời và thu hồi phiên được quy định chuẩn hóa tại [session domain](file:///c:/Users/ccquo/Downloads/Compressed/user_access_management/docs/domain/session.md).
 
 | ID | Method and path | Contract |
 | --- | --- | --- |
@@ -10,9 +10,7 @@ All operations require bearer access and global rate limiting.
 
 ## Collision and failure rules
 
-- Session ID lookup is scoped to authenticated user.
-- Revoke is idempotent only after ownership has been established; it never reveals another user's session.
-- `SESSION-REVOKE` records durable `revoked_at`, then blacklists JTI. Redis failure triggers durable invalidate-all compensation and the request fails closed.
-- Concurrent refresh/revoke locks the session row; only a non-revoked current refresh hash can rotate.
-- Client profile represents a full user-agent observation plus parsed families and recent network observation, not a guaranteed physical device. OS/browser families are not a uniqueness key.
-- Session cap is enforced during login by revoking oldest excess sessions and blacklisting their JTI before success is returned.
+- Session ID lookup được giới hạn nghiêm ngặt theo authenticated user; revoke có tính idempotent sau khi xác thực quyền sở hữu và không làm lộ phiên của người dùng khác.
+- `SESSION-REVOKE`: Ghi nhận `revoked_at` bền vững và blacklist JTI fail-closed; nếu Redis lỗi sẽ áp dụng compensation invalidate-all theo [session domain](file:///c:/Users/ccquo/Downloads/Compressed/user_access_management/docs/domain/session.md#4-thu-hồi-phiên-session-revocation).
+- Xử lý đồng thời giữa refresh và revoke: Tuân thủ quy tắc khóa hàng phiên và single-winner theo [session domain](file:///c:/Users/ccquo/Downloads/Compressed/user_access_management/docs/domain/session.md#2-xoay-vòng-phiên--kiểm-soát-đồng-thời-session-rotation--concurrency).
+- Giới hạn phiên (`MAX_SESSIONS_PER_USER`) và client profile: Áp dụng cơ chế thu hồi phiên cũ nhất và lưu vết client theo [session domain](file:///c:/Users/ccquo/Downloads/Compressed/user_access_management/docs/domain/session.md#1-khởi-tạo-phiên--giới-hạn-phiên-session-issuance--session-cap).

@@ -4,12 +4,13 @@ import (
 	"os"
 	"strings"
 	"testing"
-
-	"github.com/quocdev03/user-access-management/internal/config"
 )
 
+// File này kiểm chứng hành vi mysql config và các trường hợp lỗi liên quan.
+
+// TestNewMySQLConfigSupportsIPv6AndTLSModes kiểm chứng kịch bản NewMySQLConfigSupportsIPv6AndTLSModes.
 func TestNewMySQLConfigSupportsIPv6AndTLSModes(t *testing.T) {
-	base := config.DatabaseConfig{
+	base := MySQLOptions{
 		Host:     "2001:db8::1",
 		Port:     "3306",
 		Name:     "uam",
@@ -44,12 +45,13 @@ func TestNewMySQLConfigSupportsIPv6AndTLSModes(t *testing.T) {
 	}
 }
 
+// TestNewMySQLConfigRejectsInvalidCA kiểm chứng kịch bản NewMySQLConfigRejectsInvalidCA.
 func TestNewMySQLConfigRejectsInvalidCA(t *testing.T) {
 	caFile := t.TempDir() + "/invalid-ca.pem"
 	if err := os.WriteFile(caFile, []byte("not a certificate"), 0o600); err != nil {
 		t.Fatalf("write CA fixture: %v", err)
 	}
-	_, err := newMySQLConfig(config.DatabaseConfig{
+	_, err := newMySQLConfig(MySQLOptions{
 		Host:      "db.example.test",
 		Port:      "3306",
 		TLSMode:   "verify",

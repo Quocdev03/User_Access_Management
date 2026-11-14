@@ -9,11 +9,17 @@ import (
 	"go.uber.org/zap"
 )
 
+// File này xóa dữ liệu TTL hết hạn theo batch và lịch chạy có giới hạn.
+
+// CleanupLease định nghĩa interface phân tán để đảm bảo chỉ một instance worker thực hiện dọn dẹp tại một thời điểm.
 type CleanupLease interface {
+	// Acquire giành lease và trả ownership token khi tiến trình trở thành owner.
 	Acquire(context.Context, string, time.Duration) (string, bool, error)
+	// Release chỉ nhả lease khi ownership token vẫn khớp.
 	Release(context.Context, string, string) error
 }
 
+// CleanupWorker định kỳ dọn dẹp các bản ghi hết hạn và dữ liệu cũ theo batch an toàn.
 type CleanupWorker struct {
 	challenges *mysqlstore.VerificationChallengeStore
 	sessions   *mysqlstore.SessionStore
@@ -26,6 +32,7 @@ type CleanupWorker struct {
 	logger     *zap.Logger
 }
 
+// NewCleanupWorker khởi tạo CleanupWorker với các dependency được cung cấp.
 func NewCleanupWorker(
 	challenges *mysqlstore.VerificationChallengeStore,
 	sessions *mysqlstore.SessionStore,
@@ -50,6 +57,7 @@ func NewCleanupWorker(
 	}
 }
 
+// Start chạy cleanup theo interval cho đến khi context bị hủy.
 func (w *CleanupWorker) Start(ctx context.Context) {
 	w.logger.Info(
 		"Cleanup worker started",
@@ -71,6 +79,7 @@ func (w *CleanupWorker) Start(ctx context.Context) {
 	}
 }
 
+// runOnce giành lease rồi dọn từng nhóm dữ liệu theo batch giới hạn.
 func (w *CleanupWorker) runOnce(ctx context.Context) {
 	if ctx.Err() != nil {
 		return
@@ -107,6 +116,12 @@ func (w *CleanupWorker) runOnce(ctx context.Context) {
 			name: "sessions",
 			run: func(ctx context.Context, limit int) (int64, error) {
 				return w.sessions.DeleteExpiredBatch(ctx, now, limit)
+			},
+		},
+		{
+			name: "refresh_token_history",
+			run: func(ctx context.Context, limit int) (int64, error) {
+				return w.sessions.DeleteExpiredRefreshHistoryBatch(ctx, now, limit)
 			},
 		},
 		{
@@ -153,6 +168,7 @@ func (w *CleanupWorker) runOnce(ctx context.Context) {
 	w.runFair(runCtx, tasks)
 }
 
+// cleanupTask mô tả một đơn vị tác vụ dọn dẹp dữ liệu của một bảng cụ thể.
 type cleanupTask struct {
 	name     string
 	deleted  int
@@ -160,6 +176,7 @@ type cleanupTask struct {
 	run      func(context.Context, int) (int64, error)
 }
 
+// runFair luân phiên các cleanup task để một bảng lớn không làm starvation bảng khác.
 func (w *CleanupWorker) runFair(ctx context.Context, tasks []cleanupTask) {
 	for {
 		pending := 0

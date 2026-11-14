@@ -1,3 +1,4 @@
+// Package accountstate sở hữu policy chuyển đổi trạng thái tài khoản.
 package accountstate
 
 import (
@@ -7,6 +8,9 @@ import (
 	"github.com/quocdev03/user-access-management/pkg/apperror"
 )
 
+// File này định nghĩa state machine và effective status duy nhất của tài khoản.
+
+// Lifecycle biểu diễn trạng thái vòng đời cốt lõi của tài khoản trong hệ thống.
 type Lifecycle string
 
 const (
@@ -15,6 +19,7 @@ const (
 	Disabled            Lifecycle = "disabled"
 )
 
+// PublicStatus biểu diễn trạng thái công khai của tài khoản trả về qua API.
 type PublicStatus string
 
 const (
@@ -23,6 +28,7 @@ const (
 	PublicLocked   PublicStatus = "locked"
 )
 
+// State đóng gói toàn bộ trạng thái vòng đời, khóa bảo mật và cờ bắt buộc đổi mật khẩu của tài khoản.
 type State struct {
 	Lifecycle              Lifecycle
 	EmailVerified          bool
@@ -33,10 +39,12 @@ type State struct {
 	AuthVersion            uint64
 }
 
+// Registration tạo state ban đầu cho tài khoản đang chờ xác minh email.
 func Registration() State {
 	return State{Lifecycle: PendingVerification}
 }
 
+// Validate từ chối tổ hợp account state vi phạm canonical invariant.
 func (s State) Validate() error {
 	switch s.Lifecycle {
 	case PendingVerification:
@@ -57,6 +65,7 @@ func (s State) Validate() error {
 	return nil
 }
 
+// EffectiveStatus tính public status với administrative/login lock có độ ưu tiên cao nhất.
 func (s State) EffectiveStatus(now time.Time) PublicStatus {
 	if s.AdministrativeLockedAt != nil {
 		return PublicLocked
@@ -70,6 +79,7 @@ func (s State) EffectiveStatus(now time.Time) PublicStatus {
 	return PublicActive
 }
 
+// AuthenticationError ánh xạ state hiện tại sang business error dùng tại auth boundary.
 func (s State) AuthenticationError(now time.Time) error {
 	if s.AdministrativeLockedAt != nil ||
 		(s.LoginLockedUntil != nil && s.LoginLockedUntil.After(now)) {
@@ -84,6 +94,7 @@ func (s State) AuthenticationError(now time.Time) error {
 	return nil
 }
 
+// VerifyEmail kích hoạt tài khoản pending và tăng auth_version.
 func (s *State) VerifyEmail() error {
 	if s.EmailVerified {
 		return apperror.ErrAccountAlreadyVerified
@@ -96,6 +107,7 @@ func (s *State) VerifyEmail() error {
 	return nil
 }
 
+// SetEmailVerification đồng bộ lifecycle với cờ xác minh rồi tăng auth_version.
 func (s *State) SetEmailVerification(verified bool) {
 	s.EmailVerified = verified
 	switch {
@@ -107,37 +119,41 @@ func (s *State) SetEmailVerification(verified bool) {
 	s.invalidateAuth()
 }
 
+// Disable chuyển lifecycle sang disabled và làm mất hiệu lực auth state.
 func (s *State) Disable() {
 	s.Lifecycle = Disabled
 	s.invalidateAuth()
 }
 
+// Enable kích hoạt tài khoản đã xác minh và làm mất hiệu lực auth state cũ.
 func (s *State) Enable() {
 	s.Lifecycle = Active
 	s.EmailVerified = true
 	s.invalidateAuth()
 }
 
+// LockAdministratively ghi thời điểm admin lock và tăng auth_version.
 func (s *State) LockAdministratively(now time.Time) {
 	lockedAt := now.UTC()
 	s.AdministrativeLockedAt = &lockedAt
 	s.invalidateAuth()
 }
 
+// UnlockAdministratively gỡ admin lock và tăng auth_version.
 func (s *State) UnlockAdministratively() {
 	s.AdministrativeLockedAt = nil
 	s.invalidateAuth()
 }
 
+// SetAdministrativeStatus áp dụng public status do admin yêu cầu mà không phá email invariant.
 func (s *State) SetAdministrativeStatus(status PublicStatus, now time.Time) error {
 	switch status {
 	case PublicActive:
 		if !s.EmailVerified {
-			return apperror.ErrBadRequest.WithMessage(
-				"Không thể kích hoạt tài khoản chưa xác thực email",
-			)
+			s.Lifecycle = PendingVerification
+		} else {
+			s.Lifecycle = Active
 		}
-		s.Lifecycle = Active
 		s.AdministrativeLockedAt = nil
 		s.LoginLockedUntil = nil
 		s.FailedLoginAttempts = 0
@@ -156,6 +172,7 @@ func (s *State) SetAdministrativeStatus(status PublicStatus, now time.Time) erro
 	return nil
 }
 
+// RecordFailedLogin tăng failed-attempt counter và đặt login lock khi chạm ngưỡng.
 func (s *State) RecordFailedLogin(now time.Time, maxAttempts int, lockDuration time.Duration) {
 	s.FailedLoginAttempts++
 	if maxAttempts > 0 && s.FailedLoginAttempts >= maxAttempts {
@@ -164,6 +181,7 @@ func (s *State) RecordFailedLogin(now time.Time, maxAttempts int, lockDuration t
 	}
 }
 
+// UnlockLoginIfExpired xóa login lock đã hết hạn và báo state có thay đổi hay không.
 func (s *State) UnlockLoginIfExpired(now time.Time) bool {
 	if s.LoginLockedUntil == nil || s.LoginLockedUntil.After(now) {
 		return false
@@ -173,11 +191,13 @@ func (s *State) UnlockLoginIfExpired(now time.Time) bool {
 	return true
 }
 
+// CompleteAuthentication xóa failed-attempt state sau khi đăng nhập thành công.
 func (s *State) CompleteAuthentication() {
 	s.LoginLockedUntil = nil
 	s.FailedLoginAttempts = 0
 }
 
+// CompleteCredentialChange xóa lock tạm, bỏ cờ bắt đổi mật khẩu và tăng auth_version.
 func (s *State) CompleteCredentialChange() {
 	s.LoginLockedUntil = nil
 	s.FailedLoginAttempts = 0
@@ -185,15 +205,18 @@ func (s *State) CompleteCredentialChange() {
 	s.invalidateAuth()
 }
 
+// RequirePasswordChange buộc lần đăng nhập kế tiếp đổi mật khẩu và tăng auth_version.
 func (s *State) RequirePasswordChange() {
 	s.PasswordChangeRequired = true
 	s.invalidateAuth()
 }
 
+// InvalidateAuth công khai transition tăng auth_version cho security mutation.
 func (s *State) InvalidateAuth() {
 	s.invalidateAuth()
 }
 
+// invalidateAuth tăng canonical auth_version đúng một lần cho mỗi transition.
 func (s *State) invalidateAuth() {
 	s.AuthVersion++
 }

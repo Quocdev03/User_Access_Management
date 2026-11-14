@@ -14,12 +14,16 @@ import (
 	"github.com/quocdev03/user-access-management/pkg/validator"
 )
 
+// File này bind request quản trị và ánh xạ kết quả use case sang HTTP.
+
+// AdminHandler tiếp nhận và xử lý các HTTP request quản trị người dùng, vai trò và nhật ký kiểm toán.
 type AdminHandler struct {
 	users *accessapp.Users
 	roles *accessapp.Roles
 	audit *accessapp.Audit
 }
 
+// NewAdminHandler khởi tạo AdminHandler với các dependency được cung cấp.
 func NewAdminHandler(
 	users *accessapp.Users,
 	roles *accessapp.Roles,
@@ -28,10 +32,12 @@ func NewAdminHandler(
 	return &AdminHandler{users: users, roles: roles, audit: audit}
 }
 
+// parseTargetID phân tích target ID tại HTTP boundary.
 func parseTargetID(ctx *gin.Context) (uint64, error) {
 	return parseUintParam(ctx, "id", "ID người dùng không hợp lệ")
 }
 
+// parseUintParam từ chối path parameter không phải uint64 trước khi gọi use case.
 func parseUintParam(ctx *gin.Context, name, badMsg string) (uint64, error) {
 	id, err := strconv.ParseUint(ctx.Param(name), 10, 64)
 	if err != nil {
@@ -40,6 +46,7 @@ func parseUintParam(ctx *gin.Context, name, badMsg string) (uint64, error) {
 	return id, nil
 }
 
+// ListUsers xử lý HTTP cho thao tác lấy danh sách người dùng.
 // @Summary Lấy danh sách người dùng
 // @Description Dành cho Admin lấy danh sách users (hỗ trợ phân trang, lọc, sắp xếp)
 // @Tags Admin - Users
@@ -47,12 +54,14 @@ func parseUintParam(ctx *gin.Context, name, badMsg string) (uint64, error) {
 // @Produce json
 // @Security BearerAuth
 // @Param page query int false "Số trang"
-// @Param page_size query int false "Kích thước trang"
+// @Param per_page query int false "Số lượng bản ghi mỗi trang"
 // @Param sort_by query string false "Sắp xếp theo trường nào"
 // @Param sort_order query string false "Chiều sắp xếp (asc/desc)"
 // @Param status query string false "Lọc theo trạng thái"
-// @Param search query string false "Tìm kiếm theo username/email"
-// @Success 200 {object} response.Response{data=[]UserProfileResponse}
+// @Param username query string false "Tìm kiếm theo username"
+// @Param email query string false "Tìm kiếm theo email"
+// @Param role query string false "Lọc theo role"
+// @Success 200 {object} response.Response{data=[]AdminUserListItem,meta=PaginationMeta}
 // @Failure 400 {object} response.Response
 // @Failure 401 {object} response.Response
 // @Failure 403 {object} response.Response
@@ -97,6 +106,7 @@ func (h *AdminHandler) ListUsers(ctx *gin.Context) {
 	)
 }
 
+// GetUserDetail xử lý HTTP cho thao tác xem chi tiết người dùng.
 // @Summary Xem chi tiết người dùng
 // @Description Dành cho Admin xem chi tiết thông tin của một user cụ thể
 // @Tags Admin - Users
@@ -125,6 +135,7 @@ func (h *AdminHandler) GetUserDetail(c *gin.Context) {
 	response.Success(c, http.StatusOK, "Lấy thông tin thành công", adminUserResponse(*user))
 }
 
+// UpdateUser xử lý HTTP cho thao tác cập nhật thông tin người dùng.
 // @Summary Cập nhật thông tin người dùng
 // @Description Dành cho Admin cập nhật thông tin cá nhân của user
 // @Tags Admin - Users
@@ -152,15 +163,15 @@ func (h *AdminHandler) UpdateUser(ctx *gin.Context) {
 	}
 
 	err = h.users.Update(ctx.Request.Context(), accessapp.UpdateUserCommand{
-		ActorID:       claims.UserID,
-		TargetID:      targetID,
-		FullName:      req.FullName,
-		Phone:         req.Phone,
-		Email:         req.Email,
-		EmailVerified: req.EmailVerified,
-		DateOfBirth:   req.DateOfBirth,
-		AvatarURL:     req.AvatarURL,
-		Metadata:      adminMetadata(ctx),
+		ActorID:         claims.UserID,
+		TargetID:        targetID,
+		FullName:        req.FullName,
+		Phone:           req.Phone,
+		Email:           req.Email,
+		EmailVerified:   req.EmailVerified,
+		DateOfBirth:     req.DateOfBirth,
+		AvatarObjectKey: req.AvatarObjectKey,
+		Metadata:        adminMetadata(ctx),
 	})
 	if err != nil {
 		response.Error(ctx, err)
@@ -170,6 +181,7 @@ func (h *AdminHandler) UpdateUser(ctx *gin.Context) {
 	response.Success(ctx, http.StatusOK, "Cập nhật người dùng thành công", nil)
 }
 
+// ChangeUserStatus xử lý HTTP cho thao tác thay đổi trạng thái người dùng.
 // @Summary Thay đổi trạng thái người dùng
 // @Description Dành cho Admin khóa hoặc mở khóa tài khoản user
 // @Tags Admin - Users
@@ -211,6 +223,7 @@ func (h *AdminHandler) ChangeUserStatus(ctx *gin.Context) {
 	response.Success(ctx, http.StatusOK, "cập nhật trạng thái thành công", nil)
 }
 
+// ResetPassword xử lý HTTP cho thao tác đặt lại mật khẩu người dùng.
 // @Summary Đặt lại mật khẩu người dùng
 // @Description Gửi liên kết đặt lại mật khẩu dùng một lần và thu hồi phiên hiện tại
 // @Tags Admin - Users
@@ -249,6 +262,7 @@ func (h *AdminHandler) ResetPassword(ctx *gin.Context) {
 	response.Success(ctx, http.StatusOK, "Đã gửi liên kết đặt lại mật khẩu qua email", nil)
 }
 
+// NotifyUser xử lý HTTP cho thao tác gửi thông báo cho người dùng.
 // @Summary Gửi thông báo cho người dùng
 // @Description Dành cho Admin gửi email thông báo trực tiếp tới user
 // @Tags Admin - Users
@@ -289,6 +303,7 @@ func (h *AdminHandler) NotifyUser(ctx *gin.Context) {
 	response.Success(ctx, http.StatusOK, "Đã gửi thông báo thành công", nil)
 }
 
+// ListRoles xử lý HTTP cho thao tác lấy danh sách Roles.
 // @Summary Lấy danh sách Roles
 // @Description Lấy danh sách tất cả các role trong hệ thống
 // @Tags Admin - Roles
@@ -312,6 +327,7 @@ func (h *AdminHandler) ListRoles(c *gin.Context) {
 	response.Success(c, http.StatusOK, "Thành công", result)
 }
 
+// CreateRole xử lý HTTP cho thao tác tạo Role mới.
 // @Summary Tạo Role mới
 // @Description Tạo một role mới trong hệ thống
 // @Tags Admin - Roles
@@ -343,6 +359,7 @@ func (h *AdminHandler) CreateRole(c *gin.Context) {
 	response.Success(c, http.StatusOK, "Tạo role thành công", adminRoleResponse(*role))
 }
 
+// UpdateRole xử lý HTTP cho thao tác cập nhật Role.
 // @Summary Cập nhật Role
 // @Description Cập nhật thông tin của một role
 // @Tags Admin - Roles
@@ -381,6 +398,7 @@ func (h *AdminHandler) UpdateRole(c *gin.Context) {
 	response.Success(c, http.StatusOK, "Cập nhật role thành công", nil)
 }
 
+// DeleteRole xử lý HTTP cho thao tác xóa Role.
 // @Summary Xóa Role
 // @Description Xóa một role khỏi hệ thống (nếu không có user đang sử dụng)
 // @Tags Admin - Roles
@@ -412,6 +430,7 @@ func (h *AdminHandler) DeleteRole(c *gin.Context) {
 	response.Success(c, http.StatusOK, "Xóa role thành công", nil)
 }
 
+// AssignPermissions xử lý HTTP cho thao tác gán Permissions cho Role.
 // @Summary Gán Permissions cho Role
 // @Description Phân quyền (permissions) cho một role
 // @Tags Admin - Roles
@@ -452,6 +471,7 @@ func (h *AdminHandler) AssignPermissions(c *gin.Context) {
 	response.Success(c, http.StatusOK, "Gán quyền thành công", nil)
 }
 
+// AssignUserRole xử lý HTTP cho thao tác gán Role cho User.
 // @Summary Gán Role cho User
 // @Description Gán một role cho một user
 // @Tags Admin - Roles
@@ -489,6 +509,7 @@ func (h *AdminHandler) AssignUserRole(c *gin.Context) {
 	response.Success(c, http.StatusOK, "Gán role cho user thành công", nil)
 }
 
+// RemoveUserRole xử lý HTTP cho thao tác gỡ Role khỏi User.
 // @Summary Gỡ Role khỏi User
 // @Description Gỡ một role đã được gán cho một user
 // @Tags Admin - Roles
@@ -527,6 +548,7 @@ func (h *AdminHandler) RemoveUserRole(c *gin.Context) {
 	response.Success(c, http.StatusOK, "Gỡ role khỏi user thành công", nil)
 }
 
+// Export xử lý HTTP cho thao tác xuất Audit Logs.
 // @Summary Xuất Audit Logs
 // @Description Xuất nhật ký hệ thống (audit logs) ra file CSV (tối đa 10000 dòng)
 // @Tags Admin - Audit Logs
@@ -565,6 +587,7 @@ func (h *AdminHandler) Export(c *gin.Context) {
 	c.Data(http.StatusOK, "text/csv; charset=utf-8", csvData)
 }
 
+// adminUserResponse ánh xạ domain user sang public admin response.
 func adminUserResponse(user accessapp.User) AdminUserListItem {
 	return AdminUserListItem{
 		ID:            user.ID,
@@ -581,6 +604,7 @@ func adminUserResponse(user accessapp.User) AdminUserListItem {
 	}
 }
 
+// adminRoleResponse ánh xạ role và permission projection sang public response.
 func adminRoleResponse(role accessapp.Role) RoleResponse {
 	permissions := make([]PermissionResponse, 0, len(role.Permissions))
 	for _, permission := range role.Permissions {
@@ -601,6 +625,7 @@ func adminRoleResponse(role accessapp.Role) RoleResponse {
 	}
 }
 
+// adminMetadata đọc principal metadata dùng cho audit của admin mutation.
 func adminMetadata(ctx *gin.Context) accessapp.Metadata {
 	return accessapp.Metadata{
 		IPAddress: ctx.ClientIP(),

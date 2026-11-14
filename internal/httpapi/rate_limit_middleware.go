@@ -12,6 +12,9 @@ import (
 	"go.uber.org/zap"
 )
 
+// File này áp dụng token bucket và fail closed khi Redis không khả dụng.
+
+// RateLimitMiddleware áp dụng limiter theo scope và trả 503 khi Redis không quyết định được.
 func RateLimitMiddleware(
 	limiter *redisstore.Limiter,
 	metrics *HTTPMetrics,

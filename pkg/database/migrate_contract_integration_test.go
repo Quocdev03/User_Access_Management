@@ -16,6 +16,9 @@ import (
 	_ "github.com/golang-migrate/migrate/v4/source/file"
 )
 
+// File này kiểm chứng tích hợp migrate contract integration với các dependency runtime liên quan.
+
+// TestContractMigrationCurrentData kiểm chứng kịch bản ContractMigrationCurrentData.
 func TestContractMigrationCurrentData(t *testing.T) {
 	db, migrator, databaseName := contractMigrationMigrator(
 		t,
@@ -33,6 +36,7 @@ func TestContractMigrationCurrentData(t *testing.T) {
 	assertContractMigrationData(t, db)
 }
 
+// TestContractMigrationEmptyUp kiểm chứng kịch bản ContractMigrationEmptyUp.
 func TestContractMigrationEmptyUp(t *testing.T) {
 	db, migrator, databaseName := contractMigrationMigrator(
 		t,
@@ -44,6 +48,7 @@ func TestContractMigrationEmptyUp(t *testing.T) {
 	assertContractMigrationSchema(t, db, databaseName)
 }
 
+// contractMigrationMigrator tạo migrator bắt đầu tại schema ngay trước contract phase.
 func contractMigrationMigrator(
 	t *testing.T,
 	databaseNameEnv string,
@@ -98,6 +103,7 @@ func contractMigrationMigrator(
 	return db, migrator, cfg.DBName
 }
 
+// insertContractMigrationFixture seed current-data snapshot trước khi chạy contract migration.
 func insertContractMigrationFixture(t *testing.T, db *sql.DB) {
 	t.Helper()
 	result, err := db.Exec(`
@@ -160,6 +166,7 @@ func insertContractMigrationFixture(t *testing.T, db *sql.DB) {
 	}
 }
 
+// assertContractMigrationSchema xác nhận legacy schema đã bị loại và canonical schema còn đủ.
 func assertContractMigrationSchema(
 	t *testing.T,
 	db *sql.DB,
@@ -241,6 +248,7 @@ func assertContractMigrationSchema(
 	}
 }
 
+// assertContractMigrationColumnCount kiểm tra column legacy không còn xuất hiện trong information_schema.
 func assertContractMigrationColumnCount(
 	t *testing.T,
 	db *sql.DB,
@@ -266,6 +274,7 @@ func assertContractMigrationColumnCount(
 	}
 }
 
+// assertContractMigrationData xác nhận dữ liệu canonical được giữ nguyên sau contract phase.
 func assertContractMigrationData(t *testing.T, db *sql.DB) {
 	t.Helper()
 	assertScalar(t, db, `

@@ -1,3 +1,4 @@
+// Package auth triển khai các use case đăng ký, đăng nhập, mật khẩu và MFA.
 package auth
 
 import (
@@ -16,8 +17,11 @@ import (
 	"github.com/quocdev03/user-access-management/pkg/hash"
 )
 
+// File này điều phối xác minh email đăng ký và gửi lại OTP.
+
 const emailVerificationPurpose = "email_verification"
 
+// EmailVerification điều phối quy trình xác minh địa chỉ email và phát lại mã OTP xác thực.
 type EmailVerification struct {
 	accounts    *mysqlstore.AccountStore
 	challenges  *mysqlstore.VerificationChallengeStore
@@ -30,6 +34,7 @@ type EmailVerification struct {
 	maxAttempts int
 }
 
+// NewEmailVerification khởi tạo EmailVerification với các dependency được cung cấp.
 func NewEmailVerification(
 	db *sqlx.DB,
 	accounts *mysqlstore.AccountStore,
@@ -54,6 +59,7 @@ func NewEmailVerification(
 	}
 }
 
+// Verify consume OTP hợp lệ, kích hoạt email và ghi auth-state mutation trong transaction.
 func (v *EmailVerification) Verify(ctx context.Context, email, otp string) error {
 	now := time.Now().UTC()
 	var businessError error
@@ -143,6 +149,7 @@ func (v *EmailVerification) Verify(ctx context.Context, email, otp string) error
 	return businessError
 }
 
+// Resend thay challenge đăng ký cũ bằng OTP mới và durable outbox event.
 func (v *EmailVerification) Resend(ctx context.Context, email string) error {
 	now := time.Now().UTC()
 	var businessError error
@@ -169,6 +176,7 @@ func (v *EmailVerification) Resend(ctx context.Context, email string) error {
 	return businessError
 }
 
+// issueInTx tạo verification challenge và outbox event trong transaction hiện tại.
 func (v *EmailVerification) issueInTx(
 	ctx context.Context,
 	userID uint64,
@@ -225,6 +233,7 @@ func (v *EmailVerification) issueInTx(
 	})
 }
 
+// generateOTP tạo OTP trong auth use case.
 func generateOTP() (string, error) {
 	value, err := rand.Int(rand.Reader, big.NewInt(1000000))
 	if err != nil {

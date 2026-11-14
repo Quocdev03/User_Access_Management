@@ -11,6 +11,9 @@ import (
 	"github.com/redis/go-redis/v9"
 )
 
+// File này kiểm chứng tích hợp limiter integration với các dependency runtime liên quan.
+
+// TestLimiterTokenBucketAndBanAreAtomic kiểm chứng kịch bản LimiterTokenBucketAndBanAreAtomic.
 func TestLimiterTokenBucketAndBanAreAtomic(t *testing.T) {
 	address := os.Getenv("UAM_REDIS_TEST_ADDR")
 	if address == "" {

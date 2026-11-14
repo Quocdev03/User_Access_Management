@@ -9,6 +9,9 @@ import (
 	"github.com/quocdev03/user-access-management/pkg/hash"
 )
 
+// File này phát hành token và lưu session trong transaction do caller sở hữu.
+
+// IssueInput chứa thông tin người dùng và token cần thiết để phát hành một phiên đăng nhập mới.
 type IssueInput struct {
 	UserID       uint64
 	RefreshToken string
@@ -17,6 +20,7 @@ type IssueInput struct {
 	UserAgent    string
 }
 
+// Issuer chịu trách nhiệm tạo mới session và quản lý giới hạn số lượng session đồng thời trong MySQL transaction.
 type Issuer struct {
 	sessions    *mysqlstore.SessionStore
 	profiles    *mysqlstore.ClientProfileStore
@@ -27,6 +31,7 @@ type Issuer struct {
 	refreshTTL  time.Duration
 }
 
+// NewIssuer khởi tạo Issuer với các dependency được cung cấp.
 func NewIssuer(
 	sessions *mysqlstore.SessionStore,
 	profiles *mysqlstore.ClientProfileStore,
@@ -47,7 +52,7 @@ func NewIssuer(
 	}
 }
 
-// IssueInTx persists a new session inside the caller-owned login transaction.
+// IssueInTx phát hành token và lưu session bên trong transaction đăng nhập do caller sở hữu.
 func (i *Issuer) IssueInTx(ctx context.Context, input IssueInput) ([]string, error) {
 	var kickedJTIs []string
 	if i.maxSessions > 0 {
@@ -89,6 +94,7 @@ func (i *Issuer) IssueInTx(ctx context.Context, input IssueInput) ([]string, err
 	return kickedJTIs, nil
 }
 
+// FinalizeEvictions blacklist JTI của các session bị đẩy sau khi transaction đã commit.
 func (i *Issuer) FinalizeEvictions(
 	ctx context.Context,
 	userID uint64,
@@ -109,6 +115,7 @@ func (i *Issuer) FinalizeEvictions(
 	return nil
 }
 
+// sessionsToKick tính số session cũ nhất cần thu hồi theo giới hạn cấu hình.
 func sessionsToKick(activeCount, maximum int) int {
 	if maximum <= 0 {
 		return 0

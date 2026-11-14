@@ -8,14 +8,19 @@ import (
 	"github.com/quocdev03/user-access-management/pkg/apperror"
 )
 
+// File này tăng auth_version và xóa session trong transaction hiện tại.
+
+// AuthInvalidator thực hiện tăng auth_version và thu hồi toàn bộ session người dùng trong MySQL transaction.
 type AuthInvalidator struct {
 	db *sqlx.DB
 }
 
+// NewAuthInvalidator khởi tạo AuthInvalidator với các dependency được cung cấp.
 func NewAuthInvalidator(db *sqlx.DB) *AuthInvalidator {
 	return &AuthInvalidator{db: db}
 }
 
+// Invalidate tăng auth_version và xóa session bằng transaction do caller sở hữu.
 func (i *AuthInvalidator) Invalidate(ctx context.Context, userID uint64) error {
 	if !inTransaction(ctx) {
 		return fmt.Errorf("auth invalidation requires a MySQL transaction")
@@ -44,6 +49,7 @@ func (i *AuthInvalidator) Invalidate(ctx context.Context, userID uint64) error {
 	return nil
 }
 
+// DeleteSessions xóa session tại MySQL adapter và giữ mapping persistence khỏi domain.
 func (i *AuthInvalidator) DeleteSessions(ctx context.Context, userID uint64) error {
 	if !inTransaction(ctx) {
 		return fmt.Errorf("session deletion requires a MySQL transaction")

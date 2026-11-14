@@ -12,6 +12,9 @@ import (
 	"github.com/quocdev03/user-access-management/pkg/hash"
 )
 
+// File này luân chuyển refresh token và xử lý reuse theo fail-closed policy.
+
+// RotationRequest chứa các tham số để yêu cầu luân chuyển một refresh token.
 type RotationRequest struct {
 	UserID             uint64
 	CurrentRefreshHash string
@@ -20,14 +23,17 @@ type RotationRequest struct {
 	UserAgent          string
 }
 
+// RotationTokens chứa cặp access token và refresh token mới sau khi luân chuyển thành công.
 type RotationTokens struct {
 	AccessToken  string
 	RefreshToken string
 	AccessJTI    string
 }
 
+// RotationAuthorizer là hàm callback được gọi bên trong transaction để sinh cặp token mới.
 type RotationAuthorizer func(context.Context) (RotationTokens, error)
 
+// Rotator thực thi quy trình luân chuyển refresh token nguyên tử và phát hiện hành vi tái sử dụng token.
 type Rotator struct {
 	sessions    *mysqlstore.SessionStore
 	tokens      TokenState
@@ -37,6 +43,7 @@ type Rotator struct {
 	refreshTTL  time.Duration
 }
 
+// NewRotator khởi tạo Rotator với các dependency được cung cấp.
 func NewRotator(
 	db *sqlx.DB,
 	sessions *mysqlstore.SessionStore,
@@ -55,6 +62,7 @@ func NewRotator(
 	}
 }
 
+// Rotate thay refresh token atomically và xử lý reuse bằng global auth invalidation.
 func (r *Rotator) Rotate(
 	ctx context.Context,
 	request RotationRequest,
@@ -160,6 +168,7 @@ func (r *Rotator) Rotate(
 	return result, nil
 }
 
+// reuseDetected đánh dấu reuse và vô hiệu hóa auth state khi refresh token bị phát lại.
 func (r *Rotator) reuseDetected(ctx context.Context, refreshHash string) (bool, error) {
 	marked, err := r.tokens.IsRefreshReuseMarked(ctx, refreshHash)
 	if err != nil {
@@ -172,6 +181,7 @@ func (r *Rotator) reuseDetected(ctx context.Context, refreshHash string) (bool, 
 	return marked || inHistory, nil
 }
 
+// compensateTokenStateFailure thu hồi session MySQL khi Redis TTL state không ghi được.
 func (r *Rotator) compensateTokenStateFailure(
 	ctx context.Context,
 	userID uint64,

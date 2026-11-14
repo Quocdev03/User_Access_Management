@@ -2,6 +2,7 @@ package mail
 
 import (
 	"bytes"
+	"context"
 	"encoding/json"
 	"fmt"
 	"html"
@@ -20,15 +21,21 @@ import (
 	"github.com/quocdev03/user-access-management/internal/config"
 )
 
+// File này chọn và triển khai SMTP, Resend HTTP hoặc log-only mail transport.
+
+// transport trừu tượng hóa phương thức gửi email qua các giao thức khác nhau (SMTP, Resend API, log-only).
 type transport interface {
-	SendEmail(to, subject, body string) error
+	// SendEmail giao một email đã render hoặc trả lỗi để outbox worker quyết định retry.
+	SendEmail(ctx context.Context, to, subject, body string) error
 }
 
+// Sender quản lý việc render template và gửi các loại email nghiệp vụ trong hệ thống.
 type Sender struct {
 	sender transport
 	cfg    *config.Config
 }
 
+// NewSender chọn Resend, local SMTP hoặc log-only transport từ cấu hình runtime.
 func NewSender(cfg *config.Config, logger *zap.Logger) *Sender {
 	host := strings.TrimSpace(cfg.Mail.Host)
 	from := strings.TrimSpace(cfg.Mail.From)
@@ -45,7 +52,7 @@ func NewSender(cfg *config.Config, logger *zap.Logger) *Sender {
 		logger.Info("Mail via Resend HTTP API", zap.String("from", from))
 		sender = &resendHTTPMail{apiKey: cfg.Mail.Password, from: from, logger: logger}
 	default:
-		// Mailpit hoặc bất kỳ plain SMTP local nào
+		// Plain SMTP chỉ dành cho Mailpit hoặc hạ tầng local không hỗ trợ STARTTLS.
 		logger.Info("Mail local/Mailpit",
 			zap.String("host", host),
 			zap.Int("port", cfg.Mail.Port),
@@ -56,7 +63,11 @@ func NewSender(cfg *config.Config, logger *zap.Logger) *Sender {
 	return &Sender{sender: sender, cfg: cfg}
 }
 
-func (s *Sender) SendEmail(to, subject, body string) error {
+// SendEmail từ chối header injection và địa chỉ nhận không chuẩn trước khi gọi transport.
+func (s *Sender) SendEmail(ctx context.Context, to, subject, body string) error {
+	if err := ctx.Err(); err != nil {
+		return err
+	}
 	if strings.ContainsAny(to, "\r\n") || strings.ContainsAny(subject, "\r\n") {
 		return fmt.Errorf("mail header contains a line break")
 	}
@@ -67,10 +78,11 @@ func (s *Sender) SendEmail(to, subject, body string) error {
 	if len([]byte(subject)) > 998 {
 		return fmt.Errorf("mail subject is too long")
 	}
-	return s.sender.SendEmail(to, subject, body)
+	return s.sender.SendEmail(ctx, to, subject, body)
 }
 
-func (s *Sender) SendVerificationEmail(to, otp string) error {
+// SendVerificationEmail render OTP đăng ký đã escape cùng thời hạn cấu hình.
+func (s *Sender) SendVerificationEmail(ctx context.Context, to, otp string) error {
 	body := fmt.Sprintf(`
 		<h2>Xác thực tài khoản</h2>
 		<p>Chào bạn,</p>
@@ -78,10 +90,11 @@ func (s *Sender) SendVerificationEmail(to, otp string) error {
 		<p>Mã này có hiệu lực trong vòng %s.</p>
 		<p>Nếu bạn không thực hiện yêu cầu này, vui lòng bỏ qua email này.</p>
 	`, html.EscapeString(otp), expiryText(s.cfg.Security.OTPExpiry))
-	return s.SendEmail(to, "Xác thực tài khoản UAM", body)
+	return s.SendEmail(ctx, to, "Xác thực tài khoản UAM", body)
 }
 
-func (s *Sender) SendPasswordResetEmail(to, token string) error {
+// SendPasswordResetEmail tạo reset URL an toàn và escape token trước khi render.
+func (s *Sender) SendPasswordResetEmail(ctx context.Context, to, token string) error {
 	frontendURL := s.cfg.App.FrontendURL
 	if frontendURL == "" {
 		frontendURL = "http://localhost:3000"
@@ -103,20 +116,22 @@ func (s *Sender) SendPasswordResetEmail(to, token string) error {
 		<p>Link này có hiệu lực trong vòng %s.</p>
 		<p>Nếu bạn không yêu cầu, vui lòng bỏ qua email này.</p>
 	`, escapedURL, escapedURL, expiryText(s.cfg.Security.PasswordResetExpiry))
-	return s.SendEmail(to, "Khôi phục mật khẩu UAM", body)
+	return s.SendEmail(ctx, to, "Khôi phục mật khẩu UAM", body)
 }
 
-func (s *Sender) SendEmailChangeVerification(to, otp string) error {
+// SendEmailChangeVerification gửi OTP đã escape đến địa chỉ email mới.
+func (s *Sender) SendEmailChangeVerification(ctx context.Context, to, otp string) error {
 	body := fmt.Sprintf(`
 		<h2>Xác nhận thay đổi Email</h2>
 		<p>Mã OTP xác nhận thay đổi email của bạn là: <strong>%s</strong></p>
 		<p>Mã này có hiệu lực trong vòng %s.</p>
 		<p>Nếu bạn không thực hiện yêu cầu này, hãy đổi mật khẩu và liên hệ hỗ trợ.</p>
 	`, html.EscapeString(otp), expiryText(s.cfg.Security.EmailChangeExpiry))
-	return s.SendEmail(to, "Xác nhận thay đổi Email UAM", body)
+	return s.SendEmail(ctx, to, "Xác nhận thay đổi Email UAM", body)
 }
 
-func (s *Sender) SendEmailChangeNotification(oldEmail, newEmail string) error {
+// SendEmailChangeNotification cảnh báo cả địa chỉ cũ và mới sau khi mutation hoàn tất.
+func (s *Sender) SendEmailChangeNotification(ctx context.Context, oldEmail, newEmail string) error {
 	body := fmt.Sprintf(`
 		<h2>Thông báo thay đổi Email</h2>
 		<p>Chào bạn,</p>
@@ -126,27 +141,30 @@ func (s *Sender) SendEmailChangeNotification(oldEmail, newEmail string) error {
 		<p>Nếu bạn không thực hiện thay đổi này, tài khoản của bạn có thể đã bị xâm nhập trái phép. Vui lòng liên hệ với bộ phận hỗ trợ khách hàng của chúng tôi ngay lập tức để được hỗ trợ bảo mật.</p>
 	`, html.EscapeString(oldEmail), html.EscapeString(newEmail))
 	subject := "Cảnh báo bảo mật: Địa chỉ Email của tài khoản đã thay đổi"
-	if err := s.SendEmail(oldEmail, subject, body); err != nil {
+	if err := s.SendEmail(ctx, oldEmail, subject, body); err != nil {
 		return err
 	}
-	return s.SendEmail(newEmail, subject, body)
+	return s.SendEmail(ctx, newEmail, subject, body)
 }
 
-func (s *Sender) SendAdminNotification(to, subject, message string) error {
+// SendAdminNotification escape nội dung do quản trị viên nhập trước khi render HTML.
+func (s *Sender) SendAdminNotification(ctx context.Context, to, subject, message string) error {
 	body := fmt.Sprintf(`
 		<h2>Thông báo từ Hệ thống</h2>
 		<p>Chào bạn,</p>
 		<p>%s</p>
 	`, html.EscapeString(message))
-	return s.SendEmail(to, html.EscapeString(subject), body)
+	return s.SendEmail(ctx, to, html.EscapeString(subject), body)
 }
 
-// --- transport ---
-
-// logOnlyMail: fallback khi SMTP_HOST trống — chỉ log, không gửi thật.
+// logOnlyMail ghi metadata an toàn khi local không cấu hình mail transport.
 type logOnlyMail struct{ logger *zap.Logger }
 
-func (s *logOnlyMail) SendEmail(to, subject, _ string) error {
+// SendEmail ghi recipient domain và subject nhưng không ghi body hoặc secret.
+func (s *logOnlyMail) SendEmail(ctx context.Context, to, subject, _ string) error {
+	if err := ctx.Err(); err != nil {
+		return err
+	}
 	s.logger.Info(
 		"[LOG ONLY MAIL — không gửi thật]",
 		zap.String("recipient_domain", recipientDomain(to)),
@@ -154,21 +172,33 @@ func (s *logOnlyMail) SendEmail(to, subject, _ string) error {
 	return nil
 }
 
-// localMail: plain SMTP (no STARTTLS) cho Mailpit. Host port 1026 trên Windows Docker.
+// localMail gửi plain SMTP cho Mailpit trong môi trường local.
 type localMail struct {
 	host, from string
 	port       int
 	logger     *zap.Logger
 }
 
-func (s *localMail) SendEmail(to, subject, body string) error {
+// SendEmail giao message qua plain SMTP dành riêng cho môi trường local.
+func (s *localMail) SendEmail(ctx context.Context, to, subject, body string) error {
+	if err := ctx.Err(); err != nil {
+		return err
+	}
 	addr := net.JoinHostPort(s.host, strconv.Itoa(s.port))
-	conn, err := net.DialTimeout("tcp", addr, 5*time.Second)
+	var dialer net.Dialer
+	conn, err := dialer.DialContext(ctx, "tcp", addr)
 	if err != nil {
 		s.logger.Error("SMTP local dial failed", zap.String("addr", addr), zap.Error(err))
 		return fmt.Errorf("dial smtp %s: %w", addr, err)
 	}
-	if err := conn.SetDeadline(time.Now().Add(15 * time.Second)); err != nil {
+	if deadline, ok := ctx.Deadline(); ok {
+		if err := conn.SetDeadline(deadline); err != nil {
+			if closeErr := conn.Close(); closeErr != nil {
+				s.logger.Warn("SMTP connection close failed", zap.Error(closeErr))
+			}
+			return fmt.Errorf("set SMTP deadline: %w", err)
+		}
+	} else if err := conn.SetDeadline(time.Now().Add(15 * time.Second)); err != nil {
 		if closeErr := conn.Close(); closeErr != nil {
 			s.logger.Warn("SMTP connection close failed", zap.Error(closeErr))
 		}
@@ -191,11 +221,20 @@ func (s *localMail) SendEmail(to, subject, body string) error {
 		}
 	}()
 
+	if err := ctx.Err(); err != nil {
+		return err
+	}
 	if err := c.Mail(s.from); err != nil {
 		return fmt.Errorf("smtp MAIL: %w", err)
 	}
+	if err := ctx.Err(); err != nil {
+		return err
+	}
 	if err := c.Rcpt(to); err != nil {
 		return fmt.Errorf("smtp RCPT: %w", err)
+	}
+	if err := ctx.Err(); err != nil {
+		return err
 	}
 	w, err := c.Data()
 	if err != nil {
@@ -224,15 +263,18 @@ func (s *localMail) SendEmail(to, subject, body string) error {
 	return nil
 }
 
-// resendHTTPMail gửi email qua Resend REST API (HTTPS port 443).
-// Dùng cho production trên PaaS (Render, Railway…) nơi outbound SMTP bị chặn.
+// resendHTTPMail giao email qua Resend HTTPS khi hạ tầng chặn outbound SMTP.
 type resendHTTPMail struct {
 	apiKey string
 	from   string
 	logger *zap.Logger
 }
 
-func (s *resendHTTPMail) SendEmail(to, subject, body string) error {
+// SendEmail gọi Resend API và chỉ log metadata không nhạy cảm của kết quả.
+func (s *resendHTTPMail) SendEmail(ctx context.Context, to, subject, body string) error {
+	if err := ctx.Err(); err != nil {
+		return err
+	}
 	payload := map[string]interface{}{
 		"from":    s.from,
 		"to":      []string{to},
@@ -244,7 +286,7 @@ func (s *resendHTTPMail) SendEmail(to, subject, body string) error {
 		return fmt.Errorf("marshal resend payload: %w", err)
 	}
 
-	req, err := http.NewRequest(http.MethodPost, "https://api.resend.com/emails", bytes.NewReader(jsonBody))
+	req, err := http.NewRequestWithContext(ctx, http.MethodPost, "https://api.resend.com/emails", bytes.NewReader(jsonBody))
 	if err != nil {
 		return fmt.Errorf("create resend request: %w", err)
 	}
@@ -285,6 +327,7 @@ func (s *resendHTTPMail) SendEmail(to, subject, body string) error {
 	return nil
 }
 
+// expiryText chuyển duration cấu hình thành mô tả ngắn dùng trong nội dung email.
 func expiryText(duration time.Duration) string {
 	if duration%time.Hour == 0 {
 		return fmt.Sprintf("%d giờ", int(duration/time.Hour))
@@ -295,6 +338,7 @@ func expiryText(duration time.Duration) string {
 	return duration.String()
 }
 
+// recipientDomain chỉ lấy domain để log mà không để lộ đầy đủ địa chỉ người nhận.
 func recipientDomain(address string) string {
 	at := strings.LastIndexByte(address, '@')
 	if at < 0 || at == len(address)-1 {

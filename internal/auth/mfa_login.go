@@ -6,12 +6,14 @@ import (
 	"fmt"
 	"time"
 
-	accessapp "github.com/quocdev03/user-access-management/internal/access"
 	"github.com/quocdev03/user-access-management/internal/redisstore"
 	sessionapp "github.com/quocdev03/user-access-management/internal/session"
 	"github.com/quocdev03/user-access-management/pkg/apperror"
 )
 
+// File này hoàn tất đăng nhập sau khi MFA challenge được xác minh.
+
+// MFALoginCommand chứa tham số xác minh thử thách MFA để hoàn tất đăng nhập.
 type MFALoginCommand struct {
 	Challenge string
 	Code      string
@@ -19,6 +21,7 @@ type MFALoginCommand struct {
 	UserAgent string
 }
 
+// VerifyLogin xác minh đăng nhập trong auth use case.
 func (m *MFA) VerifyLogin(
 	ctx context.Context,
 	command MFALoginCommand,
@@ -120,8 +123,8 @@ func (m *MFA) VerifyLogin(
 		if err != nil {
 			return err
 		}
-		if len(roles) == 0 {
-			roles = []string{accessapp.RoleUser}
+		if roles == nil {
+			roles = []string{}
 		}
 		accessToken, refreshToken, accessJTI, err := generateTokenPair(
 			account.ID,
@@ -215,10 +218,9 @@ func (m *MFA) VerifyLogin(
 		true,
 		m.policy.MaxAttempts,
 	); err != nil {
-		invalidateErr := m.sessionInvalidator.InvalidateAll(
-			ctx,
-			claim.Challenge.UserID,
-		)
+		invalidateErr := m.txManager.RunInTx(ctx, func(txCtx context.Context) error {
+			return m.authInvalidator.Invalidate(txCtx, claim.Challenge.UserID)
+		})
 		return LoginResult{}, errors.Join(
 			fmt.Errorf("consume MFA challenge after session issue: %w", err),
 			invalidateErr,
@@ -227,6 +229,7 @@ func (m *MFA) VerifyLogin(
 	return result, nil
 }
 
+// rejectLoginClaim tăng failed-attempt state hoặc consume challenge theo nguyên nhân xác minh.
 func (m *MFA) rejectLoginClaim(
 	ctx context.Context,
 	command MFALoginCommand,
@@ -244,6 +247,7 @@ func (m *MFA) rejectLoginClaim(
 	return apperror.ErrMFAInvalid
 }
 
+// releaseLoginClaim trả challenge về trạng thái retryable khi login transaction thất bại.
 func (m *MFA) releaseLoginClaim(
 	ctx context.Context,
 	command MFALoginCommand,

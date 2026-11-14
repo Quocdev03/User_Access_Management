@@ -14,6 +14,9 @@ import (
 	"github.com/quocdev03/user-access-management/pkg/hash"
 )
 
+// File này điều phối setup, xác nhận, tắt MFA và recovery codes.
+
+// MFAPolicy cấu hình các tham số bảo mật cho xác thực đa yếu tố (MFA).
 type MFAPolicy struct {
 	Issuer            string
 	ChallengeTTL      time.Duration
@@ -24,62 +27,65 @@ type MFAPolicy struct {
 	TokenPolicy       TokenPolicy
 }
 
+// MFADependencies tập hợp các dependency cần thiết để khởi tạo use case MFA.
 type MFADependencies struct {
-	DB                 *sqlx.DB
-	Accounts           *mysqlstore.AccountStore
-	Profiles           *mysqlstore.ProfileStore
-	Roles              *mysqlstore.RoleStore
-	Audits             *mysqlstore.AuditStore
-	Store              *mysqlstore.MFAStore
-	Challenges         *redisstore.MFAChallengeStore
-	Issuer             *sessionapp.Issuer
-	AuthInvalidator    *mysqlstore.AuthInvalidator
-	SessionInvalidator *sessionapp.Invalidator
-	Codec              *MFASecretCodec
+	DB              *sqlx.DB
+	Accounts        *mysqlstore.AccountStore
+	Profiles        *mysqlstore.ProfileStore
+	Roles           *mysqlstore.RoleStore
+	Audits          *mysqlstore.AuditStore
+	Store           *mysqlstore.MFAStore
+	Challenges      *redisstore.MFAChallengeStore
+	Issuer          *sessionapp.Issuer
+	AuthInvalidator *mysqlstore.AuthInvalidator
+	Codec           *MFASecretCodec
 }
 
+// MFA quản lý toàn bộ vòng đời xác thực đa yếu tố bao gồm setup, kích hoạt, xác thực và vô hiệu hóa.
 type MFA struct {
-	accounts           *mysqlstore.AccountStore
-	profiles           *mysqlstore.ProfileStore
-	roles              *mysqlstore.RoleStore
-	audits             *mysqlstore.AuditStore
-	store              *mysqlstore.MFAStore
-	challenges         *redisstore.MFAChallengeStore
-	issuer             *sessionapp.Issuer
-	authInvalidator    *mysqlstore.AuthInvalidator
-	sessionInvalidator *sessionapp.Invalidator
-	codec              *MFASecretCodec
-	txManager          *mysqlstore.TxManager
-	policy             MFAPolicy
+	accounts        *mysqlstore.AccountStore
+	profiles        *mysqlstore.ProfileStore
+	roles           *mysqlstore.RoleStore
+	audits          *mysqlstore.AuditStore
+	store           *mysqlstore.MFAStore
+	challenges      *redisstore.MFAChallengeStore
+	issuer          *sessionapp.Issuer
+	authInvalidator *mysqlstore.AuthInvalidator
+	codec           *MFASecretCodec
+	txManager       *mysqlstore.TxManager
+	policy          MFAPolicy
 }
 
+// MFASetupResult chứa secret và URI mã hóa QR code phục vụ thiết lập MFA.
 type MFASetupResult struct {
 	Secret        string
 	EnrollmentURI string
 }
 
+// MFAStatusResult phản ánh trạng thái kích hoạt MFA và số mã khôi phục còn lại.
 type MFAStatusResult struct {
 	Enabled                bool
 	RecoveryCodesRemaining int
 }
 
+// NewMFA khởi tạo MFA với các dependency được cung cấp.
 func NewMFA(deps MFADependencies, policy MFAPolicy) *MFA {
 	return &MFA{
-		accounts:           deps.Accounts,
-		profiles:           deps.Profiles,
-		roles:              deps.Roles,
-		audits:             deps.Audits,
-		store:              deps.Store,
-		challenges:         deps.Challenges,
-		issuer:             deps.Issuer,
-		authInvalidator:    deps.AuthInvalidator,
-		sessionInvalidator: deps.SessionInvalidator,
-		codec:              deps.Codec,
-		txManager:          mysqlstore.NewTxManager(deps.DB),
-		policy:             policy,
+		accounts:        deps.Accounts,
+		profiles:        deps.Profiles,
+		roles:           deps.Roles,
+		audits:          deps.Audits,
+		store:           deps.Store,
+		challenges:      deps.Challenges,
+		issuer:          deps.Issuer,
+		authInvalidator: deps.AuthInvalidator,
+		codec:           deps.Codec,
+		txManager:       mysqlstore.NewTxManager(deps.DB),
+		policy:          policy,
 	}
 }
 
+// Setup tạo TOTP enrollment mới nhưng chưa bật MFA cho đến bước Confirm.
 func (m *MFA) Setup(
 	ctx context.Context,
 	userID uint64,
@@ -161,6 +167,7 @@ func (m *MFA) Setup(
 	}, nil
 }
 
+// Confirm xác minh TOTP đầu tiên rồi bật MFA và vô hiệu hóa session trong transaction.
 func (m *MFA) Confirm(
 	ctx context.Context,
 	userID uint64,
@@ -258,6 +265,7 @@ func (m *MFA) Confirm(
 	return recoveryCodes, nil
 }
 
+// Disable xác minh password/TOTP rồi xóa factor và session trong transaction.
 func (m *MFA) Disable(
 	ctx context.Context,
 	userID uint64,
@@ -310,6 +318,7 @@ func (m *MFA) Disable(
 	)
 }
 
+// RegenerateRecoveryCodes thay toàn bộ recovery code sau khi xác minh password và TOTP.
 func (m *MFA) RegenerateRecoveryCodes(
 	ctx context.Context,
 	userID uint64,
@@ -382,6 +391,7 @@ func (m *MFA) RegenerateRecoveryCodes(
 	return recoveryCodes, nil
 }
 
+// Status trả trạng thái MFA và số recovery code còn hiệu lực của tài khoản.
 func (m *MFA) Status(
 	ctx context.Context,
 	userID uint64,
@@ -403,6 +413,7 @@ func (m *MFA) Status(
 	}, nil
 }
 
+// EnabledForLogin kiểm tra MFA flag bằng transaction context của login use case.
 func (m *MFA) EnabledForLogin(
 	ctx context.Context,
 	userID uint64,
@@ -414,6 +425,7 @@ func (m *MFA) EnabledForLogin(
 	return record != nil && record.EnabledAt != nil, nil
 }
 
+// CreateLoginChallenge tạo đăng nhập challenge trong auth use case.
 func (m *MFA) CreateLoginChallenge(
 	ctx context.Context,
 	userID uint64,
@@ -425,12 +437,14 @@ func (m *MFA) CreateLoginChallenge(
 	}, m.policy.ChallengeTTL)
 }
 
+// mfaPasswordProof lưu kết quả xác thực mật khẩu trước khi tiến hành cập nhật cấu hình MFA.
 type mfaPasswordProof struct {
 	account         *mysqlstore.Account
 	passwordMatches bool
 	now             time.Time
 }
 
+// preparePasswordProof đọc password snapshot và chạy bcrypt trước khi khóa account để giảm thời gian giữ lock.
 func (m *MFA) preparePasswordProof(
 	ctx context.Context,
 	userID uint64,
@@ -462,6 +476,7 @@ func (m *MFA) preparePasswordProof(
 	}, nil
 }
 
+// runPasswordProofTx khóa account và chỉ chạy mutation khi password snapshot vẫn khớp.
 func (m *MFA) runPasswordProofTx(
 	ctx context.Context,
 	proof mfaPasswordProof,
@@ -545,12 +560,14 @@ func (m *MFA) runPasswordProofTx(
 	return businessError
 }
 
+// mfaFactorProof lưu thông tin bản ghi TOTP và bước xác thực trước transaction mutation.
 type mfaFactorProof struct {
 	record       *mysqlstore.TOTPRecord
 	usedStep     *uint64
 	recoveryHash []byte
 }
 
+// prepareEnabledFactor giải mã TOTP secret hiện tại trước transaction mutation.
 func (m *MFA) prepareEnabledFactor(
 	ctx context.Context,
 	userID uint64,
@@ -592,6 +609,7 @@ func (m *MFA) prepareEnabledFactor(
 	}, nil
 }
 
+// consumeFactor consume factor trong auth use case.
 func (m *MFA) consumeFactor(
 	ctx context.Context,
 	userID uint64,
@@ -628,6 +646,7 @@ func (m *MFA) consumeFactor(
 	return nil
 }
 
+// auditMutation ghi MFA mutation theo best effort và không làm rollback kết quả chính.
 func (m *MFA) auditMutation(
 	ctx context.Context,
 	userID uint64,
@@ -646,6 +665,7 @@ func (m *MFA) auditMutation(
 	})
 }
 
+// sameMFASnapshot phát hiện MFA state đã đổi giữa bước crypto và bước locked mutation.
 func sameMFASnapshot(
 	current *mysqlstore.TOTPRecord,
 	snapshot *mysqlstore.TOTPRecord,

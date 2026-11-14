@@ -5,6 +5,9 @@ import (
 	"time"
 )
 
+// File này kiểm chứng hành vi jwt và các trường hợp lỗi liên quan.
+
+// TestGenerateAndParseToken kiểm chứng kịch bản GenerateAndParseToken.
 func TestGenerateAndParseToken(t *testing.T) {
 	secret := "my-super-secret-key-1234567890"
 	userID := uint64(42)
@@ -42,6 +45,7 @@ func TestGenerateAndParseToken(t *testing.T) {
 	}
 }
 
+// TestGenerateTokenWithAuthVersion kiểm chứng kịch bản GenerateTokenWithAuthVersion.
 func TestGenerateTokenWithAuthVersion(t *testing.T) {
 	const authVersion = uint64(9)
 	token, _, err := GenerateTokenWithAuthVersion(
@@ -64,6 +68,7 @@ func TestGenerateTokenWithAuthVersion(t *testing.T) {
 	}
 }
 
+// TestExpiredToken kiểm chứng kịch bản ExpiredToken.
 func TestExpiredToken(t *testing.T) {
 	secret := "my-super-secret-key-1234567890"
 	userID := uint64(42)
@@ -85,6 +90,7 @@ func TestExpiredToken(t *testing.T) {
 	}
 }
 
+// TestTamperedToken kiểm chứng kịch bản TamperedToken.
 func TestTamperedToken(t *testing.T) {
 	secret := "my-super-secret-key-1234567890"
 	userID := uint64(42)
@@ -111,6 +117,7 @@ func TestTamperedToken(t *testing.T) {
 	}
 }
 
+// TestInvalidSignature kiểm chứng lỗi khi giải mã token có chữ ký không hợp lệ.
 func TestInvalidSignature(t *testing.T) {
 	secret := "my-super-secret-key-1234567890"
 	wrongSecret := "wrong-secret-key-0987654321"
@@ -130,5 +137,49 @@ func TestInvalidSignature(t *testing.T) {
 
 	if err != ErrInvalidToken {
 		t.Errorf("Expected ErrInvalidToken, got %v", err)
+	}
+}
+
+// TestParseTokenAllowExpired kiểm chứng trích xuất claims khi token hết hạn nhưng chữ ký hợp lệ.
+func TestParseTokenAllowExpired(t *testing.T) {
+	secret := "my-super-secret-key-123456789012"
+	userID := uint64(99)
+
+	// Case 1: Token còn hạn
+	validToken, jti, err := GenerateToken(userID, []string{"user"}, "access", time.Hour, secret)
+	if err != nil {
+		t.Fatalf("GenerateToken: %v", err)
+	}
+	claims, isExpired, err := ParseTokenAllowExpired(validToken, secret)
+	if err != nil {
+		t.Fatalf("ParseTokenAllowExpired valid: %v", err)
+	}
+	if isExpired {
+		t.Fatal("expected isExpired to be false for valid token")
+	}
+	if claims.UserID != userID || claims.ID != jti {
+		t.Fatalf("claims mismatch: %+v", claims)
+	}
+
+	// Case 2: Token đã hết hạn
+	expiredToken, expJti, err := GenerateToken(userID, []string{"user"}, "access", -time.Minute, secret)
+	if err != nil {
+		t.Fatalf("GenerateToken expired: %v", err)
+	}
+	claims, isExpired, err = ParseTokenAllowExpired(expiredToken, secret)
+	if err != nil {
+		t.Fatalf("ParseTokenAllowExpired expired returned error: %v", err)
+	}
+	if !isExpired {
+		t.Fatal("expected isExpired to be true for expired token")
+	}
+	if claims.UserID != userID || claims.ID != expJti {
+		t.Fatalf("claims mismatch for expired token: %+v", claims)
+	}
+
+	// Case 3: Token sai chữ ký
+	_, _, err = ParseTokenAllowExpired(expiredToken, "wrong-secret-key-12345678901234")
+	if err == nil {
+		t.Fatal("expected error for wrong secret, got nil")
 	}
 }

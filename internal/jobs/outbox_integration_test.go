@@ -22,11 +22,14 @@ import (
 	"go.uber.org/zap"
 )
 
+// File này kiểm chứng tích hợp outbox integration với các dependency runtime liên quan.
+
 var (
 	jobsMigrationOnce sync.Once
 	jobsMigrationErr  error
 )
 
+// fakeVerificationSender là test double ghi nhận các lời gọi gửi email xác thực phục vụ kiểm thử outbox worker.
 type fakeVerificationSender struct {
 	err        error
 	to         string
@@ -34,7 +37,11 @@ type fakeVerificationSender struct {
 	resetToken string
 }
 
-func (s *fakeVerificationSender) SendVerificationEmail(to, otp string) error {
+// SendVerificationEmail gửi xác minh email trong bounded worker.
+func (s *fakeVerificationSender) SendVerificationEmail(ctx context.Context, to, otp string) error {
+	if err := ctx.Err(); err != nil {
+		return err
+	}
 	if s.err != nil {
 		return s.err
 	}
@@ -43,7 +50,11 @@ func (s *fakeVerificationSender) SendVerificationEmail(to, otp string) error {
 	return nil
 }
 
-func (s *fakeVerificationSender) SendPasswordResetEmail(to, token string) error {
+// SendPasswordResetEmail gửi mật khẩu đặt lại email trong bounded worker.
+func (s *fakeVerificationSender) SendPasswordResetEmail(ctx context.Context, to, token string) error {
+	if err := ctx.Err(); err != nil {
+		return err
+	}
 	if s.err != nil {
 		return s.err
 	}
@@ -52,11 +63,16 @@ func (s *fakeVerificationSender) SendPasswordResetEmail(to, token string) error 
 	return nil
 }
 
-func (s *fakeVerificationSender) SendEmailChangeVerification(to, otp string) error {
-	return s.SendVerificationEmail(to, otp)
+// SendEmailChangeVerification gửi email thay đổi xác minh trong bounded worker.
+func (s *fakeVerificationSender) SendEmailChangeVerification(ctx context.Context, to, otp string) error {
+	return s.SendVerificationEmail(ctx, to, otp)
 }
 
-func (s *fakeVerificationSender) SendEmailChangeNotification(oldEmail, newEmail string) error {
+// SendEmailChangeNotification ghi nhận cảnh báo đổi email trong fake mail sender.
+func (s *fakeVerificationSender) SendEmailChangeNotification(ctx context.Context, oldEmail, newEmail string) error {
+	if err := ctx.Err(); err != nil {
+		return err
+	}
 	if s.err != nil {
 		return s.err
 	}
@@ -65,7 +81,11 @@ func (s *fakeVerificationSender) SendEmailChangeNotification(oldEmail, newEmail 
 	return nil
 }
 
-func (s *fakeVerificationSender) SendAdminNotification(to, subject, message string) error {
+// SendAdminNotification ghi nhận thông báo quản trị trong fake mail sender.
+func (s *fakeVerificationSender) SendAdminNotification(ctx context.Context, to, subject, message string) error {
+	if err := ctx.Err(); err != nil {
+		return err
+	}
 	if s.err != nil {
 		return s.err
 	}
@@ -77,6 +97,7 @@ func (s *fakeVerificationSender) SendAdminNotification(to, subject, message stri
 
 var errDeliveryUnavailable = errors.New("delivery unavailable")
 
+// TestOutboxWorkerDeliversAndRedactsVerificationPayload kiểm chứng kịch bản OutboxWorkerDeliversAndRedactsVerificationPayload.
 func TestOutboxWorkerDeliversAndRedactsVerificationPayload(t *testing.T) {
 	db := openJobsIntegrationDB(t)
 	clearOutboxFixtures(t, db)
@@ -139,6 +160,7 @@ func TestOutboxWorkerDeliversAndRedactsVerificationPayload(t *testing.T) {
 	}
 }
 
+// TestOutboxWorkerReleasesFailedDeliveryForRetry kiểm chứng kịch bản OutboxWorkerReleasesFailedDeliveryForRetry.
 func TestOutboxWorkerReleasesFailedDeliveryForRetry(t *testing.T) {
 	db := openJobsIntegrationDB(t)
 	clearOutboxFixtures(t, db)
@@ -206,6 +228,7 @@ func TestOutboxWorkerReleasesFailedDeliveryForRetry(t *testing.T) {
 	}
 }
 
+// TestOutboxWorkerDeliversPasswordResetEvent kiểm chứng kịch bản OutboxWorkerDeliversPasswordResetEvent.
 func TestOutboxWorkerDeliversPasswordResetEvent(t *testing.T) {
 	db := openJobsIntegrationDB(t)
 	clearOutboxFixtures(t, db)
@@ -253,6 +276,7 @@ func TestOutboxWorkerDeliversPasswordResetEvent(t *testing.T) {
 	}
 }
 
+// TestOutboxWorkerDeliversAdminNotificationEvent kiểm chứng kịch bản OutboxWorkerDeliversAdminNotificationEvent.
 func TestOutboxWorkerDeliversAdminNotificationEvent(t *testing.T) {
 	db := openJobsIntegrationDB(t)
 	clearOutboxFixtures(t, db)
@@ -303,6 +327,7 @@ func TestOutboxWorkerDeliversAdminNotificationEvent(t *testing.T) {
 	}
 }
 
+// clearOutboxFixtures xóa event giữa các integration case để tránh ảnh hưởng chéo.
 func clearOutboxFixtures(t *testing.T, db *sqlx.DB) {
 	t.Helper()
 	if _, err := db.Exec(`DELETE FROM outbox_events`); err != nil {
@@ -310,6 +335,7 @@ func clearOutboxFixtures(t *testing.T, db *sqlx.DB) {
 	}
 }
 
+// testOutboxConfig trả batch, retry và lease duration ngắn cho integration test.
 func testOutboxConfig() config.OutboxConfig {
 	return config.OutboxConfig{
 		PollInterval:  time.Second,
@@ -320,6 +346,7 @@ func testOutboxConfig() config.OutboxConfig {
 	}
 }
 
+// openJobsIntegrationDB kết nối disposable MySQL và bỏ qua test khi integration DSN chưa được cấu hình.
 func openJobsIntegrationDB(t *testing.T) *sqlx.DB {
 	t.Helper()
 	name := os.Getenv("UAM_JOBS_TEST_DB_NAME")
@@ -334,7 +361,7 @@ func openJobsIntegrationDB(t *testing.T) *sqlx.DB {
 	user := os.Getenv("UAM_JOBS_TEST_DB_USER")
 	password := os.Getenv("UAM_JOBS_TEST_DB_PASSWORD")
 	jobsMigrationOnce.Do(func() {
-		jobsMigrationErr = database.RunMigrations(config.DatabaseConfig{
+		jobsMigrationErr = database.RunMigrations(database.MySQLOptions{
 			Host:     host,
 			Port:     port,
 			Name:     name,

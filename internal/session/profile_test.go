@@ -5,6 +5,9 @@ import (
 	"testing"
 )
 
+// File này kiểm chứng hành vi profile và các trường hợp lỗi liên quan.
+
+// TestSessionsToKick kiểm chứng kịch bản SessionsToKick.
 func TestSessionsToKick(t *testing.T) {
 	tests := []struct {
 		name     string
@@ -31,6 +34,7 @@ func TestSessionsToKick(t *testing.T) {
 	}
 }
 
+// TestParseUserAgent kiểm chứng kịch bản ParseUserAgent.
 func TestParseUserAgent(t *testing.T) {
 	tests := []struct {
 		name       string
@@ -76,6 +80,7 @@ func TestParseUserAgent(t *testing.T) {
 	}
 }
 
+// TestObservedProfileUsesFullUserAgent kiểm chứng kịch bản ObservedProfileUsesFullUserAgent.
 func TestObservedProfileUsesFullUserAgent(t *testing.T) {
 	userAgent := "Mozilla/5.0 Chrome/149.0.0.0"
 	profile := observedClientProfile(42, "127.0.0.1", userAgent)

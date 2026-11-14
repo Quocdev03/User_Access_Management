@@ -5,7 +5,6 @@ import (
 	"errors"
 	"time"
 
-	accessapp "github.com/quocdev03/user-access-management/internal/access"
 	"github.com/quocdev03/user-access-management/internal/mysqlstore"
 	sessionapp "github.com/quocdev03/user-access-management/internal/session"
 	"github.com/quocdev03/user-access-management/pkg/apperror"
@@ -14,17 +13,22 @@ import (
 	"go.uber.org/zap"
 )
 
+// File này luân chuyển refresh token và phát hiện token reuse.
+
+// RefreshCommand chứa refresh token và ngữ cảnh client để yêu cầu cấp lại cặp token mới.
 type RefreshCommand struct {
 	RefreshToken string
 	IPAddress    string
 	UserAgent    string
 }
 
+// RefreshResult chứa cặp access token và refresh token mới sau khi luân chuyển thành công.
 type RefreshResult struct {
 	AccessToken  string
 	RefreshToken string
 }
 
+// Refresh thực thi use case làm mới token truy cập và phát hiện việc tái sử dụng refresh token trái phép.
 type Refresh struct {
 	accounts *mysqlstore.AccountStore
 	roles    *mysqlstore.RoleStore
@@ -33,6 +37,7 @@ type Refresh struct {
 	logger   *zap.Logger
 }
 
+// NewRefresh khởi tạo Refresh với các dependency được cung cấp.
 func NewRefresh(
 	accounts *mysqlstore.AccountStore,
 	roles *mysqlstore.RoleStore,
@@ -49,6 +54,7 @@ func NewRefresh(
 	}
 }
 
+// Rotate giao refresh token cho session rotator và phát access token mới từ account snapshot.
 func (r *Refresh) Rotate(
 	ctx context.Context,
 	command RefreshCommand,
@@ -99,8 +105,8 @@ func (r *Refresh) Rotate(
 			if err != nil {
 				return sessionapp.RotationTokens{}, err
 			}
-			if len(roles) == 0 {
-				roles = []string{accessapp.RoleUser}
+			if roles == nil {
+				roles = []string{}
 			}
 			accessToken, refreshToken, accessJTI, err := generateTokenPair(
 				account.ID,

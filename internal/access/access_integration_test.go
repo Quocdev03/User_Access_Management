@@ -22,6 +22,9 @@ import (
 	"github.com/quocdev03/user-access-management/pkg/hash"
 )
 
+// File này kiểm chứng tích hợp access integration với các dependency runtime liên quan.
+
+// TestAccessSecurityIntegration kiểm chứng kịch bản AccessSecurityIntegration.
 func TestAccessSecurityIntegration(t *testing.T) {
 	db := openAccessIntegrationDB(t)
 
@@ -298,12 +301,19 @@ func TestAccessSecurityIntegration(t *testing.T) {
 	})
 }
 
+// accessTestBlob là stub implementation của blob store phục vụ access integration test.
 type accessTestBlob struct{}
 
+// Put ghi put trong access use case.
 func (accessTestBlob) Put(context.Context, string, io.Reader) error { return nil }
-func (accessTestBlob) Delete(context.Context, string) error         { return nil }
-func (accessTestBlob) URL(key string) string                        { return key }
 
+// Delete mô phỏng blob deletion cho integration fixture của access use case.
+func (accessTestBlob) Delete(context.Context, string) error { return nil }
+
+// URL tạo fake public URL cho blob fixture của access test.
+func (accessTestBlob) URL(key string) string { return key }
+
+// newAccessUsers wire use case quản trị người dùng với store integration fixture.
 func newAccessUsers(t *testing.T, db *sqlx.DB) *Users {
 	t.Helper()
 	codec, err := mail.NewSecretCodec("access-integration-pepper")
@@ -326,6 +336,7 @@ func newAccessUsers(t *testing.T, db *sqlx.DB) *Users {
 	)
 }
 
+// createAccessUser tạo access người dùng trong access use case.
 func createAccessUser(t *testing.T, db *sqlx.DB, suffix string) uint64 {
 	t.Helper()
 	now := time.Now().UTC()
@@ -363,6 +374,7 @@ func createAccessUser(t *testing.T, db *sqlx.DB, suffix string) uint64 {
 	return account.ID
 }
 
+// assignSystemRole gán system role trong access use case.
 func assignSystemRole(t *testing.T, db *sqlx.DB, userID uint64, roleName string) {
 	t.Helper()
 	store := mysqlstore.NewAccessStore(db)
@@ -375,6 +387,7 @@ func assignSystemRole(t *testing.T, db *sqlx.DB, userID uint64, roleName string)
 	}
 }
 
+// insertAccessSession tạo session để kiểm chứng hệ quả invalidation của admin mutation.
 func insertAccessSession(t *testing.T, db *sqlx.DB, userID uint64) {
 	t.Helper()
 	jti := "access-integration-jti"
@@ -388,6 +401,7 @@ func insertAccessSession(t *testing.T, db *sqlx.DB, userID uint64) {
 	}
 }
 
+// resetAccessFixtures xóa dữ liệu RBAC theo thứ tự foreign-key an toàn giữa các test.
 func resetAccessFixtures(t *testing.T, db *sqlx.DB) {
 	t.Helper()
 	for _, query := range []string{
@@ -413,6 +427,7 @@ func resetAccessFixtures(t *testing.T, db *sqlx.DB) {
 	}
 }
 
+// openAccessIntegrationDB kết nối disposable MySQL cho access integration test.
 func openAccessIntegrationDB(t *testing.T) *sqlx.DB {
 	t.Helper()
 	dbConfig := config.DatabaseConfig{
@@ -434,10 +449,10 @@ func openAccessIntegrationDB(t *testing.T) *sqlx.DB {
 	if !strings.HasPrefix(dbConfig.Name, "uam_access_test_") {
 		t.Fatalf("refusing non-disposable database %q", dbConfig.Name)
 	}
-	if err := database.RunMigrations(dbConfig, "../../migrations", "test"); err != nil {
+	if err := database.RunMigrations(dbConfig.MySQLOptions(), "../../migrations", "test"); err != nil {
 		t.Fatalf("run access migrations: %v", err)
 	}
-	db, err := database.ConnectMySQL(dbConfig)
+	db, err := database.ConnectMySQL(dbConfig.MySQLOptions())
 	if err != nil {
 		t.Fatalf("connect access database: %v", err)
 	}
@@ -445,6 +460,7 @@ func openAccessIntegrationDB(t *testing.T) *sqlx.DB {
 	return db
 }
 
+// assertAccessErrorCode yêu cầu lỗi trả đúng public business code.
 func assertAccessErrorCode(t *testing.T, err error, want string) {
 	t.Helper()
 	if got := accessErrorCode(err); got != want {
@@ -452,6 +468,7 @@ func assertAccessErrorCode(t *testing.T, err error, want string) {
 	}
 }
 
+// accessErrorCode lấy business code từ error chain của access use case.
 func accessErrorCode(err error) string {
 	var appError *apperror.AppError
 	if errors.As(err, &appError) {
@@ -460,6 +477,7 @@ func accessErrorCode(err error) string {
 	return ""
 }
 
+// containsRoleName kiểm tra role projection có chứa tên mong đợi.
 func containsRoleName(roles []string, name string) bool {
 	for _, role := range roles {
 		if role == name {

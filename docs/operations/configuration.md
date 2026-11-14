@@ -19,7 +19,7 @@ Runtime loads `.env` through Viper and allows environment variables to override 
 | Cleanup | `CLEANUP_INTERVAL`, `CLEANUP_BATCH_SIZE`, `CLEANUP_TABLE_BUDGET`, `CLEANUP_TIMEOUT`, `CLEANUP_LEASE_TTL`, `OUTBOX_RETENTION`, `AUDIT_RETENTION` | Separate worker; Redis lease fail-closed, fair per-table budget; audit retention `0` disables audit deletion |
 | Outbox | `OUTBOX_POLL_INTERVAL`, `OUTBOX_BATCH_SIZE`, `OUTBOX_CLAIM_TTL`, `OUTBOX_TIMEOUT`, `OUTBOX_MAX_CONCURRENT` | Bounded claim/delivery, stale-claim recovery and retry |
 | Observability | `READINESS_TIMEOUT`, `METRICS_TOKEN` | Production registers `/metrics` only when a token is configured |
-| Compose only | `DB_ROOT_PASSWORD` | Used by MySQL container, not application config |
+| Compose only | `DB_ROOT_PASSWORD`, `REDIS_PUBLISHED_PORT` | Used by MySQL/Redis container port binding in compose, not application config |
 | Bootstrap CLI only | `UAM_BOOTSTRAP_ADMIN_PASSWORD` | Required only while running `cmd/bootstrap-admin`; inject from secret store and remove immediately |
 
 ## Validation
@@ -46,7 +46,7 @@ Runtime loads `.env` through Viper and allows environment variables to override 
   or MFA is re-enrolled.
 - Production with local blob storage fails startup. S3 requires region, bucket and
   an HTTPS public base URL; credentials may come from workload identity.
-- JSON bodies default to 64 KiB; multipart bodies default to 3 MiB. DTO byte
+- JSON bodies default to 64 KiB; multipart bodies default to 3 MiB. Request contract byte
   limits are enforced before password hashing or database work.
 - Readiness defaults to a 2 second dependency deadline. Metrics are open only in
   non-production without a token; production omits the route when the token is empty.

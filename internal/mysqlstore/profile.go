@@ -11,6 +11,9 @@ import (
 	"github.com/quocdev03/user-access-management/pkg/apperror"
 )
 
+// File này đọc và cập nhật canonical account profile trong MySQL.
+
+// Profile ánh xạ bản ghi thông tin hồ sơ người dùng từ bảng profiles trong MySQL.
 type Profile struct {
 	UserID          uint64    `db:"user_id"`
 	FullName        string    `db:"full_name"`
@@ -21,19 +24,23 @@ type Profile struct {
 	UpdatedAt       time.Time `db:"updated_at"`
 }
 
+// ProfileStore quản lý các thao tác đọc và cập nhật thông tin hồ sơ tài khoản trong MySQL.
 type ProfileStore struct {
 	db *sqlx.DB
 }
 
+// AvatarMigrationCandidate đại diện cho bản ghi tài khoản cần di chuyển ảnh đại diện từ local sang S3.
 type AvatarMigrationCandidate struct {
 	UserID    uint64 `db:"user_id"`
 	ObjectKey string `db:"avatar_object_key"`
 }
 
+// NewProfileStore khởi tạo ProfileStore với các dependency được cung cấp.
 func NewProfileStore(db *sqlx.DB) *ProfileStore {
 	return &ProfileStore{db: db}
 }
 
+// ListAvatarMigrationCandidates đọc batch profile còn tham chiếu local avatar URL.
 func (s *ProfileStore) ListAvatarMigrationCandidates(
 	ctx context.Context,
 	afterUserID uint64,
@@ -59,6 +66,7 @@ func (s *ProfileStore) ListAvatarMigrationCandidates(
 	return candidates, nil
 }
 
+// CommitAvatarMigration đổi avatar reference sang object key khi source URL vẫn khớp snapshot.
 func (s *ProfileStore) CommitAvatarMigration(
 	ctx context.Context,
 	userID uint64,
@@ -93,6 +101,7 @@ func (s *ProfileStore) CommitAvatarMigration(
 	return nil
 }
 
+// FindByUserID truy vấn theo người dùng ID tại MySQL adapter và giữ mapping persistence khỏi domain.
 func (s *ProfileStore) FindByUserID(ctx context.Context, userID uint64) (*Profile, error) {
 	var profile Profile
 	err := executor(ctx, s.db).GetContext(ctx, &profile, `
@@ -112,6 +121,7 @@ func (s *ProfileStore) FindByUserID(ctx context.Context, userID uint64) (*Profil
 	return &profile, nil
 }
 
+// Upsert tạo hoặc cập nhật canonical profile trong transaction hiện tại.
 func (s *ProfileStore) Upsert(ctx context.Context, profile *Profile) error {
 	_, err := executor(ctx, s.db).ExecContext(ctx, `
 		INSERT INTO user_profiles (
@@ -134,6 +144,7 @@ func (s *ProfileStore) Upsert(ctx context.Context, profile *Profile) error {
 	return nil
 }
 
+// UpdateMutable cập nhật mutable tại MySQL adapter và giữ mapping persistence khỏi domain.
 func (s *ProfileStore) UpdateMutable(
 	ctx context.Context,
 	userID uint64,
@@ -177,6 +188,7 @@ func (s *ProfileStore) UpdateMutable(
 	return nil
 }
 
+// SwapAvatar thay avatar URL và trả reference cũ để caller cleanup ngoài transaction.
 func (s *ProfileStore) SwapAvatar(
 	ctx context.Context,
 	userID uint64,

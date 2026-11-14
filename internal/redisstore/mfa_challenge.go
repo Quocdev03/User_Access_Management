@@ -11,11 +11,15 @@ import (
 	"github.com/redis/go-redis/v9"
 )
 
+// File này lưu và consume MFA login challenge có TTL trong Redis.
+
+// MFAChallenge chứa thông tin định danh người dùng và auth_version gắn với thử thách MFA login.
 type MFAChallenge struct {
 	UserID      uint64
 	AuthVersion uint64
 }
 
+// MFAChallengeClaim chứa kết quả claim thử thách MFA kèm số lần thử và TTL còn lại.
 type MFAChallengeClaim struct {
 	Challenge    MFAChallenge
 	ClaimToken   string
@@ -23,6 +27,7 @@ type MFAChallengeClaim struct {
 	RemainingTTL time.Duration
 }
 
+// MFAChallengeStore quản lý việc tạo, claim và hoàn tất các thử thách MFA login tạm thời trên Redis.
 type MFAChallengeStore struct {
 	client        *redis.Client
 	createScript  *redis.Script
@@ -31,6 +36,7 @@ type MFAChallengeStore struct {
 	releaseScript *redis.Script
 }
 
+// NewMFAChallengeStore khởi tạo MFAChallengeStore với các dependency được cung cấp.
 func NewMFAChallengeStore(client *redis.Client) *MFAChallengeStore {
 	return &MFAChallengeStore{
 		client: client,
@@ -103,6 +109,7 @@ return 1
 	}
 }
 
+// Create lưu MFA login challenge có TTL để tách bước password và TOTP.
 func (s *MFAChallengeStore) Create(
 	ctx context.Context,
 	challenge MFAChallenge,
@@ -137,6 +144,7 @@ func (s *MFAChallengeStore) Create(
 	return "", fmt.Errorf("create unique MFA challenge")
 }
 
+// Claim khóa tạm challenge cho một lần xác minh và trả snapshot bất biến cho use case.
 func (s *MFAChallengeStore) Claim(
 	ctx context.Context,
 	token string,
@@ -215,6 +223,7 @@ func (s *MFAChallengeStore) Claim(
 	}, true, nil
 }
 
+// Finish consume challenge đã claim khi MFA login hoàn tất thành công.
 func (s *MFAChallengeStore) Finish(
 	ctx context.Context,
 	token string,
@@ -249,6 +258,7 @@ func (s *MFAChallengeStore) Finish(
 	}
 }
 
+// Release trả challenge đang claim về trạng thái có thể thử lại khi use case thất bại.
 func (s *MFAChallengeStore) Release(
 	ctx context.Context,
 	token string,
@@ -269,10 +279,12 @@ func (s *MFAChallengeStore) Release(
 	return nil
 }
 
+// mfaChallengeKey namespace challenge token để không va chạm Redis key khác.
 func mfaChallengeKey(token string) string {
 	return "uam:v1:mfa:{" + token + "}"
 }
 
+// randomOpaqueToken tạo challenge token đủ entropy và không chứa business state.
 func randomOpaqueToken(size int) (string, error) {
 	random := make([]byte, size)
 	if _, err := rand.Read(random); err != nil {
@@ -281,6 +293,7 @@ func randomOpaqueToken(size int) (string, error) {
 	return base64.RawURLEncoding.EncodeToString(random), nil
 }
 
+// parseRedisUint từ chối Redis integer field bị thiếu, âm hoặc sai định dạng.
 func parseRedisUint(value any, name string) (uint64, error) {
 	switch typed := value.(type) {
 	case int64:

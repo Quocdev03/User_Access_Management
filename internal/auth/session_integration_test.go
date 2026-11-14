@@ -20,6 +20,9 @@ import (
 	"go.uber.org/zap"
 )
 
+// File này kiểm chứng tích hợp session integration với các dependency runtime liên quan.
+
+// TestRefreshRotatesOnceAndDetectsReuse kiểm chứng kịch bản RefreshRotatesOnceAndDetectsReuse.
 func TestRefreshRotatesOnceAndDetectsReuse(t *testing.T) {
 	db := openAuthIntegrationDB(t)
 	login, email, password, userID := verifiedLoginFixture(t, db, "refresh")
@@ -85,6 +88,7 @@ func TestRefreshRotatesOnceAndDetectsReuse(t *testing.T) {
 	assertScalar(t, db, "SELECT COUNT(*) FROM users WHERE id = ? AND auth_version = 2", userID, 1)
 }
 
+// TestLogoutCurrentBlacklistsJTIAndRevokesSession kiểm chứng kịch bản LogoutCurrentBlacklistsJTIAndRevokesSession.
 func TestLogoutCurrentBlacklistsJTIAndRevokesSession(t *testing.T) {
 	redisAddress := os.Getenv("UAM_AUTH_TEST_REDIS_ADDR")
 	if redisAddress == "" {
@@ -148,6 +152,7 @@ func TestLogoutCurrentBlacklistsJTIAndRevokesSession(t *testing.T) {
 	)
 }
 
+// TestLogoutAllInvalidatesDurableAuthState kiểm chứng kịch bản LogoutAllInvalidatesDurableAuthState.
 func TestLogoutAllInvalidatesDurableAuthState(t *testing.T) {
 	db := openAuthIntegrationDB(t)
 	login, email, password, userID := verifiedLoginFixture(t, db, "logout_all")
@@ -170,4 +175,41 @@ func TestLogoutAllInvalidatesDurableAuthState(t *testing.T) {
 	}
 	assertScalar(t, db, "SELECT COUNT(*) FROM sessions WHERE user_id = ?", userID, 0)
 	assertScalar(t, db, "SELECT COUNT(*) FROM users WHERE id = ? AND auth_version = 2", userID, 1)
+}
+
+// TestLogoutSessionWithRefreshTokenAndExpiredAccess kiểm chứng thu hồi session khi access token đã hết hạn hoặc dùng refresh token.
+func TestLogoutSessionWithRefreshTokenAndExpiredAccess(t *testing.T) {
+	db := openAuthIntegrationDB(t)
+	login, email, password, userID := verifiedLoginFixture(t, db, "logout_refresh")
+	loggedIn, err := login.Authenticate(context.Background(), authapp.LoginCommand{
+		Email:     email,
+		Password:  password,
+		IPAddress: "127.0.0.9",
+		UserAgent: "session-integration-logout-refresh",
+	})
+	if err != nil {
+		t.Fatalf("Authenticate(): %v", err)
+	}
+
+	logout := authapp.NewLogout(
+		mysqlstore.NewSessionStore(db),
+		nil,
+		sessionapp.NewInvalidator(db),
+		zap.NewNop(),
+	)
+
+	// Thu hồi bằng refresh token mà không cần access token còn hạn
+	if err := logout.Session(context.Background(), authapp.LogoutCommand{
+		RefreshToken: loggedIn.RefreshToken,
+	}); err != nil {
+		t.Fatalf("Session() with refresh token: %v", err)
+	}
+
+	assertScalar(t, db, `
+		SELECT COUNT(*)
+		FROM sessions
+		WHERE user_id = ? AND revoked_at IS NOT NULL`,
+		userID,
+		1,
+	)
 }

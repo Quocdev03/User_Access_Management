@@ -11,6 +11,9 @@ import (
 	"github.com/quocdev03/user-access-management/pkg/apperror"
 )
 
+// File này lưu session, refresh history và trạng thái thu hồi trong MySQL.
+
+// Session ánh xạ bản ghi phiên đăng nhập người dùng từ bảng sessions trong MySQL.
 type Session struct {
 	ID                 uint64    `db:"id"`
 	UserID             uint64    `db:"user_id"`
@@ -26,14 +29,17 @@ type Session struct {
 const sessionProjection = `id, user_id, current_refresh_hash, access_jti,
 	ip_address, user_agent, client_profile_id, expires_at, created_at`
 
+// SessionStore quản lý vòng đời lưu trữ, luân chuyển và thu hồi các phiên đăng nhập trong MySQL.
 type SessionStore struct {
 	db *sqlx.DB
 }
 
+// NewSessionStore khởi tạo SessionStore với các dependency được cung cấp.
 func NewSessionStore(db *sqlx.DB) *SessionStore {
 	return &SessionStore{db: db}
 }
 
+// Create lưu session cùng refresh history trong transaction hiện tại.
 func (s *SessionStore) Create(ctx context.Context, session *Session) error {
 	result, err := executor(ctx, s.db).ExecContext(ctx, `
 		INSERT INTO sessions (
@@ -59,6 +65,7 @@ func (s *SessionStore) Create(ctx context.Context, session *Session) error {
 	return nil
 }
 
+// FindByCurrentRefreshHashForUpdate truy vấn theo hiện tại refresh băm cho cập nhật và khóa bản ghi trong transaction hiện tại để tránh lost update.
 func (s *SessionStore) FindByCurrentRefreshHashForUpdate(
 	ctx context.Context,
 	tokenHash string,
@@ -80,6 +87,7 @@ func (s *SessionStore) FindByCurrentRefreshHashForUpdate(
 	return &session, nil
 }
 
+// RefreshHistoryExists phát hiện refresh hash đã xuất hiện trong rotation history.
 func (s *SessionStore) RefreshHistoryExists(ctx context.Context, tokenHash string) (bool, error) {
 	var exists bool
 	if err := executor(ctx, s.db).GetContext(ctx, &exists,
@@ -93,6 +101,7 @@ func (s *SessionStore) RefreshHistoryExists(ctx context.Context, tokenHash strin
 	return exists, nil
 }
 
+// Rotate thay refresh hash và lưu hash cũ vào reuse history trong transaction.
 func (s *SessionStore) Rotate(
 	ctx context.Context,
 	session *Session,
@@ -145,6 +154,7 @@ func (s *SessionStore) Rotate(
 	return nil
 }
 
+// RevokeByAccessJTI thu hồi theo access JTI tại MySQL adapter và giữ mapping persistence khỏi domain.
 func (s *SessionStore) RevokeByAccessJTI(
 	ctx context.Context,
 	userID uint64,
@@ -163,6 +173,24 @@ func (s *SessionStore) RevokeByAccessJTI(
 	return nil
 }
 
+// RevokeByRefreshHash thu hồi theo refresh hash tại MySQL adapter và giữ mapping persistence khỏi domain.
+func (s *SessionStore) RevokeByRefreshHash(
+	ctx context.Context,
+	refreshHash string,
+) error {
+	_, err := executor(ctx, s.db).ExecContext(ctx, `
+		UPDATE sessions
+		SET revoked_at = COALESCE(revoked_at, NOW()), updated_at = NOW()
+		WHERE current_refresh_hash = ? AND revoked_at IS NULL`,
+		refreshHash,
+	)
+	if err != nil {
+		return fmt.Errorf("revoke session by refresh hash: %w", err)
+	}
+	return nil
+}
+
+// FindActiveByUserID truy vấn active theo người dùng ID tại MySQL adapter và giữ mapping persistence khỏi domain.
 func (s *SessionStore) FindActiveByUserID(ctx context.Context, userID uint64) ([]Session, error) {
 	sessions := []Session{}
 	err := executor(ctx, s.db).SelectContext(ctx, &sessions,
@@ -178,10 +206,12 @@ func (s *SessionStore) FindActiveByUserID(ctx context.Context, userID uint64) ([
 	return sessions, nil
 }
 
+// FindOwned truy vấn owned tại MySQL adapter và giữ mapping persistence khỏi domain.
 func (s *SessionStore) FindOwned(ctx context.Context, id, userID uint64) (*Session, error) {
 	return s.findOwned(ctx, id, userID, false)
 }
 
+// FindOwnedForUpdate truy vấn owned cho cập nhật và khóa bản ghi trong transaction hiện tại để tránh lost update.
 func (s *SessionStore) FindOwnedForUpdate(
 	ctx context.Context,
 	id uint64,
@@ -190,6 +220,7 @@ func (s *SessionStore) FindOwnedForUpdate(
 	return s.findOwned(ctx, id, userID, true)
 }
 
+// findOwned truy vấn owned tại MySQL adapter và giữ mapping persistence khỏi domain.
 func (s *SessionStore) findOwned(
 	ctx context.Context,
 	id uint64,
@@ -218,6 +249,7 @@ func (s *SessionStore) findOwned(
 	return &session, nil
 }
 
+// RevokeOwned thu hồi owned tại MySQL adapter và giữ mapping persistence khỏi domain.
 func (s *SessionStore) RevokeOwned(ctx context.Context, id, userID uint64) error {
 	result, err := executor(ctx, s.db).ExecContext(ctx, `
 		UPDATE sessions
@@ -239,6 +271,7 @@ func (s *SessionStore) RevokeOwned(ctx context.Context, id, userID uint64) error
 	return nil
 }
 
+// RevokeLocked thu hồi locked tại MySQL adapter và giữ mapping persistence khỏi domain.
 func (s *SessionStore) RevokeLocked(ctx context.Context, id, userID uint64) error {
 	result, err := executor(ctx, s.db).ExecContext(ctx, `
 		UPDATE sessions
@@ -260,6 +293,7 @@ func (s *SessionStore) RevokeLocked(ctx context.Context, id, userID uint64) erro
 	return nil
 }
 
+// CountActiveByUserID đếm active theo người dùng ID tại MySQL adapter và giữ mapping persistence khỏi domain.
 func (s *SessionStore) CountActiveByUserID(ctx context.Context, userID uint64) (int, error) {
 	var count int
 	err := executor(ctx, s.db).GetContext(ctx, &count, `
@@ -271,6 +305,7 @@ func (s *SessionStore) CountActiveByUserID(ctx context.Context, userID uint64) (
 	return count, err
 }
 
+// RevokeOldestActiveReturningJTI thu hồi session cũ nhất và trả access JTI để blacklist sau commit.
 func (s *SessionStore) RevokeOldestActiveReturningJTI(
 	ctx context.Context,
 	userID uint64,
@@ -279,6 +314,7 @@ func (s *SessionStore) RevokeOldestActiveReturningJTI(
 	if limit < 1 {
 		return nil, nil
 	}
+	// row ánh xạ dữ liệu id và access_jti của session khi thu hồi session cũ quá hạn mức.
 	type row struct {
 		ID  uint64 `db:"id"`
 		JTI string `db:"access_jti"`
@@ -321,6 +357,7 @@ func (s *SessionStore) RevokeOldestActiveReturningJTI(
 	return jtis, nil
 }
 
+// DeleteExpiredBatch xóa expired batch tại MySQL adapter và giữ mapping persistence khỏi domain.
 func (s *SessionStore) DeleteExpiredBatch(
 	ctx context.Context,
 	threshold time.Time,
@@ -336,6 +373,26 @@ func (s *SessionStore) DeleteExpiredBatch(
 	)
 	if err != nil {
 		return 0, fmt.Errorf("delete expired sessions: %w", err)
+	}
+	return result.RowsAffected()
+}
+
+// DeleteExpiredRefreshHistoryBatch xóa các bản ghi lịch sử refresh token đã hết hạn theo batch.
+func (s *SessionStore) DeleteExpiredRefreshHistoryBatch(
+	ctx context.Context,
+	threshold time.Time,
+	limit int,
+) (int64, error) {
+	if limit < 1 {
+		limit = 1000
+	}
+	result, err := executor(ctx, s.db).ExecContext(ctx,
+		`DELETE FROM refresh_token_history WHERE expires_at < ? LIMIT ?`,
+		threshold,
+		limit,
+	)
+	if err != nil {
+		return 0, fmt.Errorf("delete expired refresh token history: %w", err)
 	}
 	return result.RowsAffected()
 }

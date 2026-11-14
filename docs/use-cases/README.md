@@ -72,7 +72,7 @@ ACCOUNT-EMAIL-CHANGE-REQUEST
 
 ```text
 ACCESS-ROLE-ASSIGN / ACCESS-ROLE-REMOVE
-→ LastAdminGuard → role mutation → AuthInvalidator
+→ [LastAdminGuard](file:///c:/Users/ccquo/Downloads/Compressed/user_access_management/docs/domain/access-control.md#system-roles-and-last-admin-invariant) (khi gỡ vai trò admin) → role mutation → AuthInvalidator
 ```
 
 New documents and code use these semantic IDs; numeric use-case identifiers are retired.

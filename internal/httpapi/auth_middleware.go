@@ -16,6 +16,9 @@ import (
 	"go.uber.org/zap"
 )
 
+// File này xác minh access token và gắn principal vào request context.
+
+// AuthMiddleware xác minh Bearer token và principal state theo fail-closed policy.
 func AuthMiddleware(
 	cfg *config.Config,
 	accounts *mysqlstore.AccountStore,
@@ -120,6 +123,7 @@ func AuthMiddleware(
 	}
 }
 
+// serviceUnavailableError trả 503 khi security dependency không thể đưa ra quyết định.
 func serviceUnavailableError() error {
 	return apperror.NewAppError(
 		"ERR_SERVICE_UNAVAILABLE",

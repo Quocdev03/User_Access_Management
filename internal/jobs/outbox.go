@@ -15,14 +15,23 @@ import (
 	"go.uber.org/zap"
 )
 
+// File này claim, giải mã và giao outbox event bằng bounded worker.
+
+// MailSender định nghĩa hợp đồng gửi email được outbox worker sử dụng để phân phối các loại thông báo.
 type MailSender interface {
-	SendVerificationEmail(to, otp string) error
-	SendPasswordResetEmail(to, token string) error
-	SendEmailChangeVerification(to, otp string) error
-	SendEmailChangeNotification(oldEmail, newEmail string) error
-	SendAdminNotification(to, subject, message string) error
+	// SendVerificationEmail giao OTP xác minh đăng ký đến địa chỉ nhận.
+	SendVerificationEmail(ctx context.Context, to, otp string) error
+	// SendPasswordResetEmail giao đường dẫn đặt lại mật khẩu có token.
+	SendPasswordResetEmail(ctx context.Context, to, token string) error
+	// SendEmailChangeVerification giao OTP xác minh đến địa chỉ email mới.
+	SendEmailChangeVerification(ctx context.Context, to, otp string) error
+	// SendEmailChangeNotification cảnh báo cả địa chỉ cũ và mới sau khi đổi email.
+	SendEmailChangeNotification(ctx context.Context, oldEmail, newEmail string) error
+	// SendAdminNotification giao nội dung thông báo do quản trị viên tạo.
+	SendAdminNotification(ctx context.Context, to, subject, message string) error
 }
 
+// OutboxWorker xử lý việc claim, giải mã và gửi các sự kiện email từ outbox table.
 type OutboxWorker struct {
 	store     *mysqlstore.OutboxStore
 	txManager *mysqlstore.TxManager
@@ -33,6 +42,7 @@ type OutboxWorker struct {
 	logger    *zap.Logger
 }
 
+// NewOutboxWorker khởi tạo OutboxWorker với các dependency được cung cấp.
 func NewOutboxWorker(
 	db *sqlx.DB,
 	store *mysqlstore.OutboxStore,
@@ -56,6 +66,7 @@ func NewOutboxWorker(
 	}
 }
 
+// Start chạy bounded outbox workers cho đến khi context bị hủy.
 func (w *OutboxWorker) Start(ctx context.Context) {
 	w.logger.Info(
 		"Outbox worker started",
@@ -76,6 +87,7 @@ func (w *OutboxWorker) Start(ctx context.Context) {
 	}
 }
 
+// runOnce claim một batch event và giao từng event ngoài MySQL transaction.
 func (w *OutboxWorker) runOnce(ctx context.Context) {
 	if ctx.Err() != nil {
 		return
@@ -120,6 +132,7 @@ func (w *OutboxWorker) runOnce(ctx context.Context) {
 	wait.Wait()
 }
 
+// deliver giải mã đúng payload type và gọi mail sender tương ứng.
 func (w *OutboxWorker) deliver(ctx context.Context, event mysqlstore.OutboxEvent) {
 	deliveryCtx, cancel := context.WithTimeout(ctx, w.cfg.Timeout)
 	defer cancel()
@@ -130,31 +143,32 @@ func (w *OutboxWorker) deliver(ctx context.Context, event mysqlstore.OutboxEvent
 		var message mailmessage.SecretMessage
 		message, err = w.codec.Open(event.Payload)
 		if err == nil {
-			err = w.sender.SendVerificationEmail(message.To, message.Secret)
+			err = w.sender.SendVerificationEmail(deliveryCtx, message.To, message.Secret)
 		}
 	case mailmessage.PasswordResetRequested:
 		var message mailmessage.SecretMessage
 		message, err = w.codec.Open(event.Payload)
 		if err == nil {
-			err = w.sender.SendPasswordResetEmail(message.To, message.Secret)
+			err = w.sender.SendPasswordResetEmail(deliveryCtx, message.To, message.Secret)
 		}
 	case mailmessage.EmailChangeVerificationRequested:
 		var message mailmessage.SecretMessage
 		message, err = w.codec.Open(event.Payload)
 		if err == nil {
-			err = w.sender.SendEmailChangeVerification(message.To, message.Secret)
+			err = w.sender.SendEmailChangeVerification(deliveryCtx, message.To, message.Secret)
 		}
 	case mailmessage.EmailChangeCompleted:
-		var message mailmessage.SecretMessage
-		message, err = w.codec.Open(event.Payload)
+		var notification mailmessage.EmailChangeNotification
+		notification, err = w.codec.OpenEmailChangeNotification(event.Payload)
 		if err == nil {
-			err = w.sender.SendEmailChangeNotification(message.To, message.Secret)
+			err = w.sender.SendEmailChangeNotification(deliveryCtx, notification.OldEmail, notification.NewEmail)
 		}
 	case mailmessage.AdminNotificationRequested:
 		var message mailmessage.AdminNotification
 		message, err = w.codec.OpenAdminNotification(event.Payload)
 		if err == nil {
 			err = w.sender.SendAdminNotification(
+				deliveryCtx,
 				message.To,
 				message.Subject,
 				message.Message,
@@ -210,6 +224,7 @@ func (w *OutboxWorker) deliver(ctx context.Context, event mysqlstore.OutboxEvent
 	)
 }
 
+// outboxBackoff tính exponential retry delay có giới hạn cho event thất bại.
 func outboxBackoff(attempt int) time.Duration {
 	if attempt < 1 {
 		attempt = 1

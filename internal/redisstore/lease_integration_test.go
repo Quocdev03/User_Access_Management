@@ -11,6 +11,9 @@ import (
 	"github.com/redis/go-redis/v9"
 )
 
+// File này kiểm chứng tích hợp lease integration với các dependency runtime liên quan.
+
+// TestLeaseOwnershipAndRelease kiểm chứng kịch bản LeaseOwnershipAndRelease.
 func TestLeaseOwnershipAndRelease(t *testing.T) {
 	address := os.Getenv("UAM_REDIS_TEST_ADDR")
 	if address == "" {

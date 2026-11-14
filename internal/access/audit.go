@@ -1,3 +1,4 @@
+// Package access triển khai các use case RBAC, quản trị người dùng và audit.
 package access
 
 import (
@@ -9,11 +10,15 @@ import (
 	"github.com/quocdev03/user-access-management/internal/mysqlstore"
 )
 
+// File này điều phối truy vấn và export audit log cho quản trị viên.
+
+// Metadata chứa thông tin ngữ cảnh yêu cầu như địa chỉ IP và User-Agent phục vụ ghi nhật ký kiểm toán.
 type Metadata struct {
 	IPAddress string
 	UserAgent string
 }
 
+// AuditFilter định nghĩa các tiêu chí lọc nhật ký kiểm toán bao gồm người dùng, hành động và khoảng thời gian.
 type AuditFilter struct {
 	UserID    *uint64
 	Action    *string
@@ -21,14 +26,17 @@ type AuditFilter struct {
 	EndDate   *string
 }
 
+// Audit cung cấp use case truy vấn và trích xuất nhật ký kiểm toán hệ thống.
 type Audit struct {
 	store *mysqlstore.AuditStore
 }
 
+// NewAudit khởi tạo Audit với các dependency được cung cấp.
 func NewAudit(store *mysqlstore.AuditStore) *Audit {
 	return &Audit{store: store}
 }
 
+// Export stream audit rows thành CSV mà không giữ toàn bộ kết quả trong memory.
 func (a *Audit) Export(ctx context.Context, filter AuditFilter) ([]byte, error) {
 	logs, err := a.store.FindAllWithFilters(
 		ctx,
@@ -93,6 +101,7 @@ func (a *Audit) Export(ctx context.Context, filter AuditFilter) ([]byte, error) 
 	return buffer.Bytes(), nil
 }
 
+// writeAudit ghi audit trong access use case.
 func writeAudit(
 	ctx context.Context,
 	store *mysqlstore.AuditStore,

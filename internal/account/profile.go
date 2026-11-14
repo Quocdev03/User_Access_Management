@@ -6,12 +6,14 @@ import (
 	"time"
 
 	"github.com/jmoiron/sqlx"
-	accessapp "github.com/quocdev03/user-access-management/internal/access"
 	"github.com/quocdev03/user-access-management/internal/blob"
 	"github.com/quocdev03/user-access-management/internal/mysqlstore"
 	"github.com/quocdev03/user-access-management/pkg/apperror"
 )
 
+// File này đọc và cập nhật hồ sơ tài khoản theo canonical account state.
+
+// ProfileView đại diện cho thông tin hồ sơ người dùng đầy đủ khi xem thông tin cá nhân.
 type ProfileView struct {
 	ID            uint64
 	AvatarURL     *string
@@ -26,6 +28,7 @@ type ProfileView struct {
 	Roles         []string
 }
 
+// UpdateProfileCommand chứa các trường thông tin cần cập nhật trong hồ sơ của người dùng.
 type UpdateProfileCommand struct {
 	FullName    *string
 	Phone       *string
@@ -34,6 +37,7 @@ type UpdateProfileCommand struct {
 	UserAgent   string
 }
 
+// Profile cung cấp các use case xem và cập nhật hồ sơ cá nhân của người dùng.
 type Profile struct {
 	accounts  *mysqlstore.AccountStore
 	profiles  *mysqlstore.ProfileStore
@@ -43,6 +47,7 @@ type Profile struct {
 	txManager *mysqlstore.TxManager
 }
 
+// NewProfile khởi tạo Profile với các dependency được cung cấp.
 func NewProfile(
 	db *sqlx.DB,
 	accounts *mysqlstore.AccountStore,
@@ -61,6 +66,7 @@ func NewProfile(
 	}
 }
 
+// Get trả canonical profile và effective account status cho principal hiện tại.
 func (p *Profile) Get(ctx context.Context, userID uint64) (ProfileView, error) {
 	account, err := p.accounts.FindByID(ctx, userID)
 	if err != nil {
@@ -80,8 +86,8 @@ func (p *Profile) Get(ctx context.Context, userID uint64) (ProfileView, error) {
 	if err != nil {
 		return ProfileView{}, err
 	}
-	if len(roles) == 0 {
-		roles = []string{accessapp.RoleUser}
+	if roles == nil {
+		roles = []string{}
 	}
 	state, err := account.State()
 	if err != nil {
@@ -107,6 +113,7 @@ func (p *Profile) Get(ctx context.Context, userID uint64) (ProfileView, error) {
 	}, nil
 }
 
+// Update khóa account trước khi ghi các trường hồ sơ được phép thay đổi.
 func (p *Profile) Update(
 	ctx context.Context,
 	userID uint64,
@@ -121,7 +128,24 @@ func (p *Profile) Update(
 		dateOfBirth = &parsed
 	}
 
+	now := time.Now().UTC()
+
 	return p.txManager.RunInTx(ctx, func(txCtx context.Context) error {
+		account, err := p.accounts.FindByIDForUpdate(txCtx, userID)
+		if err != nil {
+			return err
+		}
+		if account == nil {
+			return apperror.ErrNotFound
+		}
+		state, err := account.State()
+		if err != nil {
+			return err
+		}
+		state.UnlockLoginIfExpired(now)
+		if err := state.AuthenticationError(now); err != nil {
+			return err
+		}
 		if err := p.profiles.UpdateMutable(
 			txCtx,
 			userID,

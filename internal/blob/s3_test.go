@@ -11,6 +11,9 @@ import (
 	"github.com/aws/aws-sdk-go-v2/service/s3"
 )
 
+// File này kiểm chứng hành vi s 3 và các trường hợp lỗi liên quan.
+
+// TestS3StorePutProvidesSHA256AndCanonicalKey kiểm chứng kịch bản S3StorePutProvidesSHA256AndCanonicalKey.
 func TestS3StorePutProvidesSHA256AndCanonicalKey(t *testing.T) {
 	client := &fakeS3Client{}
 	store := &S3Store{
@@ -40,11 +43,18 @@ func TestS3StorePutProvidesSHA256AndCanonicalKey(t *testing.T) {
 	if err != nil || len(decoded) != 32 {
 		t.Fatalf("checksum = %q, err = %v", *client.put.ChecksumSHA256, err)
 	}
+	if client.put.ContentType == nil || *client.put.ContentType != "image/png" {
+		t.Fatalf("ContentType = %v, expected image/png", client.put.ContentType)
+	}
+	if client.put.ContentDisposition == nil || *client.put.ContentDisposition != "inline" {
+		t.Fatalf("ContentDisposition = %v, expected inline", client.put.ContentDisposition)
+	}
 	if got := store.URL("avatars/user image.png"); got != "https://cdn.example.com/avatars/user%20image.png" {
 		t.Fatalf("URL() = %q", got)
 	}
 }
 
+// TestS3StoreRejectsUnsafeKeysAndChecksumMismatch kiểm chứng kịch bản S3StoreRejectsUnsafeKeysAndChecksumMismatch.
 func TestS3StoreRejectsUnsafeKeysAndChecksumMismatch(t *testing.T) {
 	client := &fakeS3Client{body: []byte("different")}
 	store := &S3Store{
@@ -69,11 +79,13 @@ func TestS3StoreRejectsUnsafeKeysAndChecksumMismatch(t *testing.T) {
 	}
 }
 
+// fakeS3Client là mock client triển khai s3API phục vụ unit test S3 store.
 type fakeS3Client struct {
 	put  *s3.PutObjectInput
 	body []byte
 }
 
+// PutObject ghi object qua blob storage boundary.
 func (c *fakeS3Client) PutObject(
 	_ context.Context,
 	input *s3.PutObjectInput,
@@ -83,6 +95,7 @@ func (c *fakeS3Client) PutObject(
 	return &s3.PutObjectOutput{}, nil
 }
 
+// DeleteObject xóa object qua blob storage boundary.
 func (c *fakeS3Client) DeleteObject(
 	context.Context,
 	*s3.DeleteObjectInput,
@@ -91,6 +104,7 @@ func (c *fakeS3Client) DeleteObject(
 	return &s3.DeleteObjectOutput{}, nil
 }
 
+// GetObject lấy object qua blob storage boundary.
 func (c *fakeS3Client) GetObject(
 	context.Context,
 	*s3.GetObjectInput,

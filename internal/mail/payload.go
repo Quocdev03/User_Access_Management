@@ -1,3 +1,4 @@
+// Package mail mã hóa payload và gửi email qua các transport được cấu hình.
 package mail
 
 import (
@@ -11,6 +12,8 @@ import (
 	"io"
 )
 
+// File này mã hóa payload outbox để secret không được lưu plaintext.
+
 const (
 	VerificationRequested            = "mail.verification_requested"
 	PasswordResetRequested           = "mail.password_reset_requested"
@@ -19,35 +22,46 @@ const (
 	AdminNotificationRequested       = "mail.admin_notification_requested"
 )
 
+// SecretMessage chứa thông tin địa chỉ người nhận và mã bí mật cần gửi qua email.
 type SecretMessage struct {
 	To     string
 	Secret string
 }
 
+// EmailChangeNotification chứa địa chỉ email cũ và mới sau khi hoàn tất thay đổi email.
+type EmailChangeNotification struct {
+	OldEmail string `json:"old_email"`
+	NewEmail string `json:"new_email"`
+}
+
+// AdminNotification chứa nội dung thông báo gửi tới người dùng do quản trị viên soạn thảo.
 type AdminNotification struct {
 	To      string
 	Subject string
 	Message string
 }
 
+// adminNotificationContent đại diện cho payload JSON lưu trong outbox của thông báo quản trị.
 type adminNotificationContent struct {
 	Subject string `json:"subject"`
 	Message string `json:"message"`
 }
 
+// verificationPayload đại diện cho payload JSON được mã hóa lưu trữ trong outbox table.
 type verificationPayload struct {
 	To         string `json:"to"`
 	Nonce      string `json:"nonce"`
 	Ciphertext string `json:"ciphertext"`
 }
 
+// SecretCodec chịu trách nhiệm mã hóa và giải mã các payload bí mật của outbox event bằng AES-GCM.
 type SecretCodec struct {
 	aead cipher.AEAD
 }
 
+// NewSecretCodec khởi tạo SecretCodec với các dependency được cung cấp.
 func NewSecretCodec(secret string) (*SecretCodec, error) {
-	// Keep the original derivation context so verification events already
-	// persisted before this rename remain decryptable.
+	// Giữ derivation context cũ để event đã persist trước lần đổi tên vẫn giải mã được.
 	key := sha256.Sum256([]byte("uam:outbox:verification:v1:" + secret))
 	block, err := aes.NewCipher(key[:])
 	if err != nil {
@@ -60,6 +74,7 @@ func NewSecretCodec(secret string) (*SecretCodec, error) {
 	return &SecretCodec{aead: aead}, nil
 }
 
+// Seal mã hóa secret cùng metadata loại event trước khi ghi durable outbox.
 func (c *SecretCodec) Seal(message SecretMessage) ([]byte, error) {
 	if message.To == "" || message.Secret == "" {
 		return nil, fmt.Errorf("secret message requires recipient and value")
@@ -76,6 +91,7 @@ func (c *SecretCodec) Seal(message SecretMessage) ([]byte, error) {
 	})
 }
 
+// Open xác thực và giải mã payload outbox bằng derivation context tương thích.
 func (c *SecretCodec) Open(payload []byte) (SecretMessage, error) {
 	var encoded verificationPayload
 	if err := json.Unmarshal(payload, &encoded); err != nil {
@@ -96,6 +112,7 @@ func (c *SecretCodec) Open(payload []byte) (SecretMessage, error) {
 	return SecretMessage{To: encoded.To, Secret: string(plaintext)}, nil
 }
 
+// SealAdminNotification mã hóa subject và message do quản trị viên cung cấp.
 func (c *SecretCodec) SealAdminNotification(message AdminNotification) ([]byte, error) {
 	if message.Subject == "" || message.Message == "" {
 		return nil, fmt.Errorf("admin notification requires subject and message")
@@ -110,6 +127,7 @@ func (c *SecretCodec) SealAdminNotification(message AdminNotification) ([]byte, 
 	return c.Seal(SecretMessage{To: message.To, Secret: string(content)})
 }
 
+// OpenAdminNotification xác thực rồi giải mã payload thông báo quản trị.
 func (c *SecretCodec) OpenAdminNotification(payload []byte) (AdminNotification, error) {
 	message, err := c.Open(payload)
 	if err != nil {
@@ -127,4 +145,36 @@ func (c *SecretCodec) OpenAdminNotification(payload []byte) (AdminNotification, 
 		Subject: content.Subject,
 		Message: content.Message,
 	}, nil
+}
+
+// SealEmailChangeNotification mã hóa thông báo đổi email gồm địa chỉ cũ và mới.
+func (c *SecretCodec) SealEmailChangeNotification(message EmailChangeNotification) ([]byte, error) {
+	if message.OldEmail == "" || message.NewEmail == "" {
+		return nil, fmt.Errorf("email change notification requires old and new email")
+	}
+	content, err := json.Marshal(message)
+	if err != nil {
+		return nil, fmt.Errorf("encode email change notification: %w", err)
+	}
+	return c.Seal(SecretMessage{To: message.OldEmail, Secret: string(content)})
+}
+
+// OpenEmailChangeNotification xác thực và giải mã payload thông báo thay đổi email.
+func (c *SecretCodec) OpenEmailChangeNotification(payload []byte) (EmailChangeNotification, error) {
+	message, err := c.Open(payload)
+	if err != nil {
+		return EmailChangeNotification{}, err
+	}
+	var notification EmailChangeNotification
+	if err := json.Unmarshal([]byte(message.Secret), &notification); err == nil && notification.OldEmail != "" && notification.NewEmail != "" {
+		return notification, nil
+	}
+	// Fallback tương thích ngược nếu payload cũ lưu trực tiếp NewEmail vào Secret
+	if message.To != "" && message.Secret != "" {
+		return EmailChangeNotification{
+			OldEmail: message.To,
+			NewEmail: message.Secret,
+		}, nil
+	}
+	return EmailChangeNotification{}, fmt.Errorf("email change notification is incomplete")
 }

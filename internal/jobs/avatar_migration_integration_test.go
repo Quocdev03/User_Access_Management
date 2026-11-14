@@ -20,6 +20,9 @@ import (
 	"go.uber.org/zap"
 )
 
+// File này kiểm chứng tích hợp avatar migration integration với các dependency runtime liên quan.
+
+// TestAvatarMigratorCommitsOnlyAfterChecksumVerification kiểm chứng kịch bản AvatarMigratorCommitsOnlyAfterChecksumVerification.
 func TestAvatarMigratorCommitsOnlyAfterChecksumVerification(t *testing.T) {
 	db := openJobsIntegrationDB(t)
 	userID, oldKey := seedAvatarMigrationCandidate(t, db, "verified")
@@ -64,6 +67,7 @@ func TestAvatarMigratorCommitsOnlyAfterChecksumVerification(t *testing.T) {
 	}
 }
 
+// TestAvatarMigratorChecksumFailurePreservesDatabase kiểm chứng kịch bản AvatarMigratorChecksumFailurePreservesDatabase.
 func TestAvatarMigratorChecksumFailurePreservesDatabase(t *testing.T) {
 	db := openJobsIntegrationDB(t)
 	userID, oldKey := seedAvatarMigrationCandidate(t, db, "checksum_failure")
@@ -101,6 +105,7 @@ func TestAvatarMigratorChecksumFailurePreservesDatabase(t *testing.T) {
 	}
 }
 
+// seedAvatarMigrationCandidate tạo profile còn dùng local avatar URL để migration xử lý.
 func seedAvatarMigrationCandidate(
 	t *testing.T,
 	db *sqlx.DB,
@@ -146,12 +151,14 @@ func seedAvatarMigrationCandidate(
 	return userID, key
 }
 
+// fakeVerifiedStore là test double triển khai VerifiedStore để kiểm thử checksum và di chuyển avatar.
 type fakeVerifiedStore struct {
 	mu         sync.Mutex
 	objects    map[string][]byte
 	failVerify bool
 }
 
+// newFakeVerifiedStore tạo blob test double có thể đối chiếu checksum.
 func newFakeVerifiedStore(failVerify bool) *fakeVerifiedStore {
 	return &fakeVerifiedStore{
 		objects:    make(map[string][]byte),
@@ -159,6 +166,7 @@ func newFakeVerifiedStore(failVerify bool) *fakeVerifiedStore {
 	}
 }
 
+// Put ghi put trong bounded worker.
 func (s *fakeVerifiedStore) Put(
 	_ context.Context,
 	key string,
@@ -174,6 +182,7 @@ func (s *fakeVerifiedStore) Put(
 	return nil
 }
 
+// Delete mô phỏng xóa object cho integration fixture của avatar migration.
 func (s *fakeVerifiedStore) Delete(_ context.Context, key string) error {
 	s.mu.Lock()
 	defer s.mu.Unlock()
@@ -181,10 +190,12 @@ func (s *fakeVerifiedStore) Delete(_ context.Context, key string) error {
 	return nil
 }
 
+// URL tạo fake public URL cho object đã migrate.
 func (s *fakeVerifiedStore) URL(key string) string {
 	return "https://blob.example/" + key
 }
 
+// VerifySHA256 xác minh SHA-256 trong bounded worker.
 func (s *fakeVerifiedStore) VerifySHA256(
 	_ context.Context,
 	key string,

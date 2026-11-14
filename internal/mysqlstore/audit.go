@@ -8,6 +8,9 @@ import (
 	"github.com/jmoiron/sqlx"
 )
 
+// File này ghi, lọc, export và dọn audit log trong MySQL.
+
+// AuditLog ánh xạ bản ghi nhật ký kiểm toán từ bảng audit_logs trong MySQL.
 type AuditLog struct {
 	ID         uint64    `db:"id" json:"id"`
 	UserID     *uint64   `db:"user_id" json:"user_id"`
@@ -22,14 +25,17 @@ type AuditLog struct {
 	CreatedAt  time.Time `db:"created_at" json:"created_at"`
 }
 
+// AuditStore quản lý việc lưu trữ, truy vấn, xuất file và dọn dẹp nhật ký kiểm toán trong MySQL.
 type AuditStore struct {
 	db *sqlx.DB
 }
 
+// NewAuditStore khởi tạo AuditStore với các dependency được cung cấp.
 func NewAuditStore(db *sqlx.DB) *AuditStore {
 	return &AuditStore{db: db}
 }
 
+// Create ghi một audit event bằng connection hoặc transaction trong context.
 func (s *AuditStore) Create(ctx context.Context, log *AuditLog) error {
 	query := `
 		INSERT INTO audit_logs (
@@ -59,6 +65,7 @@ func (s *AuditStore) Create(ctx context.Context, log *AuditLog) error {
 	return nil
 }
 
+// FindAllWithFilters áp dụng filter và pagination khi truy vấn audit log.
 func (s *AuditStore) FindAllWithFilters(
 	ctx context.Context,
 	userID *uint64,
@@ -83,7 +90,7 @@ func (s *AuditStore) FindAllWithFilters(
 		args = append(args, *start)
 	}
 	if end != nil && *end != "" {
-		// end là YYYY-MM-DD: dùng < end+1day để gồm cả ngày end (tránh <= midnight đầu ngày).
+		// Dùng cận trên độc quyền của ngày kế tiếp để bao phủ trọn ngày end.
 		query += ` AND created_at < DATE_ADD(?, INTERVAL 1 DAY)`
 		args = append(args, *end)
 	}
@@ -97,7 +104,7 @@ func (s *AuditStore) FindAllWithFilters(
 	return logs, nil
 }
 
-// DeleteOlderThanBatch xóa audit cũ hơn before, tối đa limit rows (retention policy).
+// DeleteOlderThanBatch xóa tối đa một batch audit log cũ hơn mốc retention để tránh transaction kéo dài.
 func (s *AuditStore) DeleteOlderThanBatch(ctx context.Context, before time.Time, limit int) (int64, error) {
 	if limit < 1 {
 		limit = 1000

@@ -1,6 +1,4 @@
-// Package config cung cấp các cấu trúc dữ liệu và hàm tiện ích để nạp cấu hình hệ thống.
-// Package này sử dụng Viper để đọc cấu hình từ file .env hoặc trực tiếp từ biến môi trường,
-// giúp việc quản lý thiết lập cho ứng dụng (Database, Redis, JWT, Mail, Security) trở nên tập trung và nhất quán.
+// Package config nạp và kiểm tra cấu hình runtime của UAM.
 package config
 
 import (
@@ -17,10 +15,13 @@ import (
 	"time"
 
 	"github.com/go-playground/validator/v10"
+	"github.com/quocdev03/user-access-management/pkg/database"
 	"github.com/spf13/viper"
 )
 
-// Config chứa toàn bộ cấu hình tổng thể của ứng dụng, bao gồm các cấu hình thành phần.
+// File này khai báo, nạp và kiểm tra toàn bộ cấu hình runtime.
+
+// Config gom cấu hình runtime đã được kiểm tra cho API và worker.
 type Config struct {
 	App           AppConfig      `validate:"required"`
 	Database      DatabaseConfig `validate:"required"`
@@ -35,7 +36,7 @@ type Config struct {
 	Observability ObservabilityConfig
 }
 
-// AppConfig định nghĩa các thông số cơ bản để chạy ứng dụng (Môi trường, Cổng, URL frontend).
+// AppConfig cấu hình môi trường, HTTP port và frontend URL.
 type AppConfig struct {
 	Env            string
 	Port           string
@@ -43,7 +44,7 @@ type AppConfig struct {
 	TrustedProxies []string
 }
 
-// DatabaseConfig định nghĩa thông số kết nối tới cơ sở dữ liệu (MySQL).
+// DatabaseConfig cấu hình kết nối, TLS và connection pool của MySQL.
 type DatabaseConfig struct {
 	Host             string `validate:"required"`
 	Port             string `validate:"required"`
@@ -59,7 +60,25 @@ type DatabaseConfig struct {
 	ConnMaxIdleTime  time.Duration
 }
 
-// RedisConfig định nghĩa thông số kết nối tới Redis (dùng cho Session, Rate Limit).
+// MySQLOptions chuyển DatabaseConfig thành database.MySQLOptions cho connection driver.
+func (c DatabaseConfig) MySQLOptions() database.MySQLOptions {
+	return database.MySQLOptions{
+		Host:             c.Host,
+		Port:             c.Port,
+		Name:             c.Name,
+		User:             c.User,
+		Password:         c.Password,
+		TLSMode:          c.TLSMode,
+		TLSCAFile:        c.TLSCAFile,
+		TLSAllowInsecure: c.TLSAllowInsecure,
+		MaxOpenConns:     c.MaxOpenConns,
+		MaxIdleConns:     c.MaxIdleConns,
+		ConnMaxLifetime:  c.ConnMaxLifetime,
+		ConnMaxIdleTime:  c.ConnMaxIdleTime,
+	}
+}
+
+// RedisConfig cấu hình Redis cho TTL state, limiter và distributed lease.
 type RedisConfig struct {
 	Host         string
 	Port         string
@@ -68,14 +87,25 @@ type RedisConfig struct {
 	MinIdleConns int
 }
 
-// JWTConfig lưu trữ khóa bí mật và thời gian sống (TTL) của các token xác thực.
+// RedisOptions chuyển RedisConfig thành database.RedisOptions cho connection driver.
+func (c RedisConfig) RedisOptions() database.RedisOptions {
+	return database.RedisOptions{
+		Host:         c.Host,
+		Port:         c.Port,
+		Password:     c.Password,
+		PoolSize:     c.PoolSize,
+		MinIdleConns: c.MinIdleConns,
+	}
+}
+
+// JWTConfig cấu hình signing secret và TTL của access/refresh token.
 type JWTConfig struct {
-	Secret        string        `validate:"required,min=16"`
+	Secret        string        `validate:"required,min=32"`
 	AccessExpiry  time.Duration `validate:"required"`
 	RefreshExpiry time.Duration `validate:"required"`
 }
 
-// MailConfig định nghĩa thông số kết nối tới máy chủ SMTP để gửi email (OTP, Verify).
+// MailConfig chọn transport và thông tin kết nối mail.
 type MailConfig struct {
 	Host     string
 	Port     int
@@ -84,6 +114,7 @@ type MailConfig struct {
 	From     string
 }
 
+// BlobConfig cấu hình driver lưu trữ file (local filesystem hoặc AWS S3/MinIO).
 type BlobConfig struct {
 	Provider        string
 	LocalRoot       string
@@ -96,7 +127,7 @@ type BlobConfig struct {
 	ForcePathStyle  bool
 }
 
-// SecurityConfig chứa các ngưỡng cấu hình liên quan đến bảo mật chống Spam và Brute-force.
+// SecurityConfig tập trung các ngưỡng rate limit, lockout và thời hạn security token.
 type SecurityConfig struct {
 	RateLimitRequests    int
 	RateLimitWindow      time.Duration
@@ -113,6 +144,7 @@ type SecurityConfig struct {
 	MultipartMaxBytes    int64
 }
 
+// MFAConfig cấu hình xác thực đa yếu tố bao gồm secret encryption keys và TTL.
 type MFAConfig struct {
 	Issuer            string
 	ActiveKeyVersion  string
@@ -122,7 +154,7 @@ type MFAConfig struct {
 	RecoveryCodeCount int
 }
 
-// CleanupConfig — worker dọn row hết hạn (session/OTP/reset) + optional audit retention.
+// CleanupConfig giới hạn batch, lịch chạy và retention của cleanup worker.
 type CleanupConfig struct {
 	Interval        time.Duration // default 1h
 	BatchSize       int           // default 1000
@@ -133,6 +165,7 @@ type CleanupConfig struct {
 	AuditRetention  time.Duration // 0 = không xóa audit
 }
 
+// OutboxConfig cấu hình tần suất thăm dò, kích thước batch và concurrency cho outbox worker.
 type OutboxConfig struct {
 	PollInterval  time.Duration
 	BatchSize     int
@@ -141,14 +174,13 @@ type OutboxConfig struct {
 	MaxConcurrent int
 }
 
+// ObservabilityConfig cấu hình timeout cho readiness probe và token xác thực metrics endpoint.
 type ObservabilityConfig struct {
 	ReadinessTimeout time.Duration
 	MetricsToken     string
 }
 
-// Load khởi tạo và nạp cấu hình từ file .env tại đường dẫn chỉ định hoặc lấy trực tiếp từ biến môi trường.
-// Hàm này sử dụng cơ chế tự động ghi đè của Viper để ưu tiên biến môi trường (Environment Variables) hơn file .env.
-// Trả về pointer của Config đã được nạp dữ liệu hoặc trả về lỗi nếu không thể phân tích cú pháp cấu hình.
+// Load nạp cấu hình từ file tùy chọn và biến môi trường, sau đó từ chối mọi cấu hình không an toàn trước khi khởi động.
 func Load(path string) (*Config, error) {
 	viper.SetConfigFile(path + "/.env")
 
@@ -476,7 +508,7 @@ func Load(path string) (*Config, error) {
 		if cfg.App.Env == "production" {
 			return nil, fmt.Errorf("OTP_PEPPER bắt buộc khi APP_ENV=production (không được fallback JWT_SECRET)")
 		}
-		// Dev/staging: fallback JWT để local chạy nhanh; production không dùng path này.
+		// Ngoài production có thể dùng JWT secret để chạy local; production bắt buộc secret riêng.
 		cfg.Security.OTPPepper = cfg.JWT.Secret
 	}
 	if cfg.Blob.Provider == "" {
@@ -577,7 +609,11 @@ func Load(path string) (*Config, error) {
 		return nil, fmt.Errorf("config validation failed: %w", err)
 	}
 
-	// Kiểm tra các giá trị thời gian để tránh lỗi do viper parse plain number thành nanoseconds
+	if len([]byte(cfg.JWT.Secret)) < 32 {
+		return nil, fmt.Errorf("JWT_SECRET phải có độ dài tối thiểu 32 bytes (256 bits)")
+	}
+
+	// Từ chối duration quá nhỏ do Viper có thể hiểu số không đơn vị là nanosecond.
 	if cfg.JWT.AccessExpiry < time.Second ||
 		cfg.JWT.RefreshExpiry < time.Second ||
 		cfg.Security.RateLimitWindow < time.Second ||
@@ -593,6 +629,7 @@ func Load(path string) (*Config, error) {
 	return cfg, nil
 }
 
+// parseMFAKeyRing phân tích key ring theo version và từ chối khóa mã hóa sai định dạng.
 func parseMFAKeyRing(raw string) (map[string][]byte, error) {
 	keys := map[string][]byte{}
 	if strings.TrimSpace(raw) == "" {
@@ -623,6 +660,7 @@ func parseMFAKeyRing(raw string) (map[string][]byte, error) {
 	return keys, nil
 }
 
+// validatePort từ chối port nằm ngoài miền hợp lệ trước khi mở kết nối.
 func validatePort(name, value string) error {
 	port, err := strconv.Atoi(value)
 	if err != nil || port < 1 || port > 65535 {
@@ -631,6 +669,7 @@ func validatePort(name, value string) error {
 	return nil
 }
 
+// splitCSV tách danh sách cấu hình, chuẩn hóa khoảng trắng và loại phần tử rỗng.
 func splitCSV(s string) []string {
 	if strings.TrimSpace(s) == "" {
 		return nil

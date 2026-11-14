@@ -12,6 +12,9 @@ import (
 	"github.com/redis/go-redis/v9"
 )
 
+// File này kiểm chứng tích hợp mfa challenge integration với các dependency runtime liên quan.
+
+// TestMFAChallengeClaimAttemptAndConsumeAreAtomic kiểm chứng kịch bản MFAChallengeClaimAttemptAndConsumeAreAtomic.
 func TestMFAChallengeClaimAttemptAndConsumeAreAtomic(t *testing.T) {
 	address := os.Getenv("UAM_REDIS_TEST_ADDR")
 	if address == "" {

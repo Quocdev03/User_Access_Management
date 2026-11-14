@@ -8,6 +8,9 @@ import (
 	"github.com/quocdev03/user-access-management/pkg/validator"
 )
 
+// File này đăng ký public và protected route của auth module.
+
+// setupAuthRoutes tách public, MFA và protected auth routes theo security boundary.
 func setupAuthRoutes(
 	rg *gin.RouterGroup,
 	authHandler *AuthHandler,
@@ -41,7 +44,7 @@ func setupAuthRoutes(
 		rateLimit("login", 15, 50),
 		authHandler.Login,
 	)
-	auth.POST("/logout", authMiddleware, authHandler.Logout)
+	auth.POST("/logout", authHandler.Logout)
 	auth.POST("/logout-all", authMiddleware, authHandler.LogoutAll)
 
 	email := auth.Group("/email")
@@ -81,9 +84,9 @@ func setupAuthRoutes(
 	)
 	password.POST(
 		"/change",
-		authMiddleware,
 		validator.ValidateJSON[ChangePasswordRequest](),
 		rateLimit("change-password", 10, 30),
+		authMiddleware,
 		authHandler.ChangePassword,
 	)
 	password.POST(
@@ -102,31 +105,31 @@ func setupAuthRoutes(
 	)
 	mfa.POST(
 		"/setup",
-		authMiddleware,
 		validator.ValidateJSON[MFASetupRequest](),
 		rateLimit("mfa-setup", 5, 15),
+		authMiddleware,
 		authHandler.SetupMFA,
 	)
 	mfa.POST(
 		"/confirm",
-		authMiddleware,
 		validator.ValidateJSON[MFAConfirmRequest](),
 		rateLimit("mfa-confirm", 10, 20),
+		authMiddleware,
 		authHandler.ConfirmMFA,
 	)
 	mfa.POST(
 		"/disable",
-		authMiddleware,
 		validator.ValidateJSON[MFASensitiveRequest](),
 		rateLimit("mfa-disable", 5, 15),
+		authMiddleware,
 		authHandler.DisableMFA,
 	)
 	mfa.GET("/status", authMiddleware, authHandler.MFAStatus)
 	mfa.POST(
 		"/recovery/regenerate",
-		authMiddleware,
 		validator.ValidateJSON[MFASensitiveRequest](),
 		rateLimit("mfa-recovery-regenerate", 5, 15),
+		authMiddleware,
 		authHandler.RegenerateMFARecoveryCodes,
 	)
 }

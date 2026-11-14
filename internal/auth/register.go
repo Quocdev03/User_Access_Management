@@ -13,6 +13,9 @@ import (
 	"github.com/quocdev03/user-access-management/pkg/hash"
 )
 
+// File này tạo tài khoản mới cùng verification challenge và outbox event.
+
+// RegisterCommand chứa thông tin đăng ký tài khoản mới của người dùng.
 type RegisterCommand struct {
 	Username    string
 	Email       string
@@ -22,6 +25,7 @@ type RegisterCommand struct {
 	DateOfBirth string
 }
 
+// RegisteredAccount chứa thông tin tóm tắt của tài khoản vừa được khởi tạo thành công.
 type RegisteredAccount struct {
 	ID       uint64
 	Username string
@@ -29,6 +33,7 @@ type RegisteredAccount struct {
 	Status   string
 }
 
+// Registration thực thi use case đăng ký tài khoản người dùng và phát hành challenge xác minh email.
 type Registration struct {
 	accounts     *mysqlstore.AccountStore
 	profiles     *mysqlstore.ProfileStore
@@ -37,6 +42,7 @@ type Registration struct {
 	txManager    *mysqlstore.TxManager
 }
 
+// NewRegistration khởi tạo Registration với các dependency được cung cấp.
 func NewRegistration(
 	db *sqlx.DB,
 	accounts *mysqlstore.AccountStore,
@@ -53,6 +59,7 @@ func NewRegistration(
 	}
 }
 
+// Register tạo account pending, canonical profile, challenge và outbox event trong transaction.
 func (r *Registration) Register(
 	ctx context.Context,
 	command RegisterCommand,

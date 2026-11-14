@@ -22,11 +22,14 @@ import (
 	"github.com/quocdev03/user-access-management/pkg/hash"
 )
 
+// File này kiểm chứng tích hợp profile integration với các dependency runtime liên quan.
+
 var (
 	accountMigrationOnce sync.Once
 	accountMigrationErr  error
 )
 
+// TestProfileGetAndUpdateUseCanonicalProjection kiểm chứng kịch bản ProfileGetAndUpdateUseCanonicalProjection.
 func TestProfileGetAndUpdateUseCanonicalProjection(t *testing.T) {
 	db := openAccountIntegrationDB(t)
 	profile, userID := profileFixture(t, db, "canonical")
@@ -93,6 +96,7 @@ func TestProfileGetAndUpdateUseCanonicalProjection(t *testing.T) {
 	)
 }
 
+// TestConcurrentProfileUpdatesDoNotLoseDifferentFields kiểm chứng kịch bản ConcurrentProfileUpdatesDoNotLoseDifferentFields.
 func TestConcurrentProfileUpdatesDoNotLoseDifferentFields(t *testing.T) {
 	db := openAccountIntegrationDB(t)
 	profile, userID := profileFixture(t, db, "concurrent")
@@ -143,6 +147,7 @@ func TestConcurrentProfileUpdatesDoNotLoseDifferentFields(t *testing.T) {
 	)
 }
 
+// profileFixture tạo account và canonical profile cho update integration test.
 func profileFixture(
 	t *testing.T,
 	db *sqlx.DB,
@@ -198,6 +203,7 @@ func profileFixture(
 	), userID
 }
 
+// openAccountIntegrationDB kết nối disposable MySQL cho profile integration test.
 func openAccountIntegrationDB(t *testing.T) *sqlx.DB {
 	t.Helper()
 	name := os.Getenv("UAM_ACCOUNT_TEST_DB_NAME")
@@ -212,7 +218,7 @@ func openAccountIntegrationDB(t *testing.T) *sqlx.DB {
 	user := os.Getenv("UAM_ACCOUNT_TEST_DB_USER")
 	password := os.Getenv("UAM_ACCOUNT_TEST_DB_PASSWORD")
 	accountMigrationOnce.Do(func() {
-		accountMigrationErr = database.RunMigrations(config.DatabaseConfig{
+		accountMigrationErr = database.RunMigrations(database.MySQLOptions{
 			Host:     host,
 			Port:     port,
 			Name:     name,
@@ -245,6 +251,7 @@ func openAccountIntegrationDB(t *testing.T) *sqlx.DB {
 	return db
 }
 
+// assertAccountScalar đọc một field account và so sánh với giá trị mong đợi.
 func assertAccountScalar(
 	t *testing.T,
 	db *sqlx.DB,

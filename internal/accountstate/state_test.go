@@ -8,6 +8,9 @@ import (
 	"github.com/quocdev03/user-access-management/pkg/apperror"
 )
 
+// File này kiểm chứng hành vi state và các trường hợp lỗi liên quan.
+
+// TestState_EffectiveStatus kiểm chứng kịch bản EffectiveStatus của State.
 func TestState_EffectiveStatus(t *testing.T) {
 	now := time.Date(2026, 7, 28, 12, 0, 0, 0, time.UTC)
 	future := now.Add(time.Minute)
@@ -35,6 +38,7 @@ func TestState_EffectiveStatus(t *testing.T) {
 	}
 }
 
+// TestState_TransitionsDoNotClearAdministrativeLock kiểm chứng kịch bản TransitionsDoNotClearAdministrativeLock của State.
 func TestState_TransitionsDoNotClearAdministrativeLock(t *testing.T) {
 	now := time.Date(2026, 7, 28, 12, 0, 0, 0, time.UTC)
 	state := State{
@@ -63,6 +67,7 @@ func TestState_TransitionsDoNotClearAdministrativeLock(t *testing.T) {
 	}
 }
 
+// TestState_VerifyEmailPreservesDisabledLifecycle kiểm chứng kịch bản VerifyEmailPreservesDisabledLifecycle của State.
 func TestState_VerifyEmailPreservesDisabledLifecycle(t *testing.T) {
 	state := State{Lifecycle: Disabled}
 
@@ -74,6 +79,7 @@ func TestState_VerifyEmailPreservesDisabledLifecycle(t *testing.T) {
 	}
 }
 
+// TestState_SetAdministrativeStatus kiểm chứng kịch bản SetAdministrativeStatus của State.
 func TestState_SetAdministrativeStatus(t *testing.T) {
 	now := time.Date(2026, 7, 28, 12, 0, 0, 0, time.UTC)
 	state := State{
@@ -102,6 +108,44 @@ func TestState_SetAdministrativeStatus(t *testing.T) {
 	}
 }
 
+// TestState_SetAdministrativeStatus_UnverifiedAccount kiểm chứng việc gỡ khóa quản trị cho tài khoản chưa xác minh email.
+func TestState_SetAdministrativeStatus_UnverifiedAccount(t *testing.T) {
+	now := time.Date(2026, 7, 28, 12, 0, 0, 0, time.UTC)
+	lockedAt := now.Add(-time.Hour)
+	state := State{
+		Lifecycle:              PendingVerification,
+		EmailVerified:          false,
+		AdministrativeLockedAt: &lockedAt,
+		LoginLockedUntil:       timePointer(now.Add(time.Minute)),
+		FailedLoginAttempts:    3,
+		AuthVersion:            1,
+	}
+
+	if err := state.SetAdministrativeStatus(PublicActive, now); err != nil {
+		t.Fatalf("SetAdministrativeStatus(PublicActive): %v", err)
+	}
+
+	if state.AdministrativeLockedAt != nil {
+		t.Fatal("administrative lock was not cleared")
+	}
+	if state.Lifecycle != PendingVerification {
+		t.Fatalf("lifecycle = %q, want %q", state.Lifecycle, PendingVerification)
+	}
+	if state.LoginLockedUntil != nil || state.FailedLoginAttempts != 0 {
+		t.Fatalf("login lock / attempts not reset: %+v", state)
+	}
+	if state.AuthVersion != 2 {
+		t.Fatalf("auth version = %d, want 2", state.AuthVersion)
+	}
+	if err := state.Validate(); err != nil {
+		t.Fatalf("Validate(): %v", err)
+	}
+	if got := state.EffectiveStatus(now); got != PublicInactive {
+		t.Fatalf("EffectiveStatus() = %q, want %q", got, PublicInactive)
+	}
+}
+
+// TestState_SetEmailVerificationPreservesDisabledLifecycle kiểm chứng kịch bản SetEmailVerificationPreservesDisabledLifecycle của State.
 func TestState_SetEmailVerificationPreservesDisabledLifecycle(t *testing.T) {
 	state := State{Lifecycle: Disabled, AuthVersion: 7}
 	state.SetEmailVerification(true)
@@ -112,6 +156,7 @@ func TestState_SetEmailVerificationPreservesDisabledLifecycle(t *testing.T) {
 	}
 }
 
+// TestState_RecordFailedLoginAndExpiry kiểm chứng kịch bản RecordFailedLoginAndExpiry của State.
 func TestState_RecordFailedLoginAndExpiry(t *testing.T) {
 	now := time.Date(2026, 7, 28, 12, 0, 0, 0, time.UTC)
 	state := State{Lifecycle: Active, EmailVerified: true}
@@ -132,6 +177,7 @@ func TestState_RecordFailedLoginAndExpiry(t *testing.T) {
 	}
 }
 
+// TestState_Validate kiểm chứng kịch bản Validate của State.
 func TestState_Validate(t *testing.T) {
 	tests := []struct {
 		name    string
@@ -156,6 +202,7 @@ func TestState_Validate(t *testing.T) {
 	}
 }
 
+// timePointer tạo pointer cho time fixture mà không dùng biến dùng chung.
 func timePointer(value time.Time) *time.Time {
 	return &value
 }

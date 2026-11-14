@@ -8,6 +8,9 @@ import (
 	"github.com/redis/go-redis/v9"
 )
 
+// File này thực hiện token bucket, violation và temporary ban bằng Redis Lua.
+
+// LimitDecision biểu diễn quyết định cho phép, từ chối hoặc cấm tạm thời của rate limiter.
 type LimitDecision uint8
 
 const (
@@ -16,6 +19,7 @@ const (
 	LimitBanned
 )
 
+// LimitPolicy quy định dung lượng token bucket, ngưỡng vi phạm lạm dụng và thời gian ban.
 type LimitPolicy struct {
 	Capacity    int
 	AbuseLimit  int
@@ -23,11 +27,13 @@ type LimitPolicy struct {
 	BanDuration time.Duration
 }
 
+// Limiter triển khai thuật toán rate limiting token bucket có hỗ trợ tạm cấm IP bằng Redis Lua script.
 type Limiter struct {
 	client *redis.Client
 	script *redis.Script
 }
 
+// NewLimiter khởi tạo Limiter với các dependency được cung cấp.
 func NewLimiter(client *redis.Client) *Limiter {
 	return &Limiter{
 		client: client,
@@ -81,6 +87,7 @@ return {1, retry_ms}
 	}
 }
 
+// Allow quyết định token-bucket, violation và temporary ban trong một Redis Lua operation.
 func (l *Limiter) Allow(
 	ctx context.Context,
 	scope string,

@@ -16,6 +16,9 @@ import (
 	"go.uber.org/zap"
 )
 
+// File này kiểm chứng hành vi hardening và các trường hợp lỗi liên quan.
+
+// TestBodyLimitRejectsKnownAndStreamingOversizeBodies kiểm chứng kịch bản BodyLimitRejectsKnownAndStreamingOversizeBodies.
 func TestBodyLimitRejectsKnownAndStreamingOversizeBodies(t *testing.T) {
 	gin.SetMode(gin.TestMode)
 	engine := gin.New()
@@ -55,6 +58,7 @@ func TestBodyLimitRejectsKnownAndStreamingOversizeBodies(t *testing.T) {
 	}
 }
 
+// TestDTOByteLimitRunsBeforeHandler kiểm chứng kịch bản DTOByteLimitRunsBeforeHandler.
 func TestDTOByteLimitRunsBeforeHandler(t *testing.T) {
 	gin.SetMode(gin.TestMode)
 	called := false
@@ -84,6 +88,7 @@ func TestDTOByteLimitRunsBeforeHandler(t *testing.T) {
 	}
 }
 
+// TestRequestObservabilityControlsRequestID kiểm chứng kịch bản RequestObservabilityControlsRequestID.
 func TestRequestObservabilityControlsRequestID(t *testing.T) {
 	gin.SetMode(gin.TestMode)
 	metrics := &httpapi.HTTPMetrics{}
@@ -109,6 +114,7 @@ func TestRequestObservabilityControlsRequestID(t *testing.T) {
 	}
 }
 
+// TestSensitiveLimiterRunsAfterFormatAndFailsClosed kiểm chứng kịch bản SensitiveLimiterRunsAfterFormatAndFailsClosed.
 func TestSensitiveLimiterRunsAfterFormatAndFailsClosed(t *testing.T) {
 	gin.SetMode(gin.TestMode)
 	client := redis.NewClient(&redis.Options{

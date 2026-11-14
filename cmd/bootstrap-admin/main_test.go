@@ -7,6 +7,9 @@ import (
 	"github.com/quocdev03/user-access-management/pkg/hash"
 )
 
+// File này kiểm chứng hành vi main và các trường hợp lỗi liên quan.
+
+// TestRejectKnownBootstrapPasswordHash kiểm chứng kịch bản RejectKnownBootstrapPasswordHash.
 func TestRejectKnownBootstrapPasswordHash(t *testing.T) {
 	tests := []struct {
 		name        string
@@ -35,6 +38,7 @@ func TestRejectKnownBootstrapPasswordHash(t *testing.T) {
 	}
 }
 
+// TestParseAndValidateBootstrapInput kiểm chứng kịch bản ParseAndValidateBootstrapInput.
 func TestParseAndValidateBootstrapInput(t *testing.T) {
 	validArgs := []string{
 		"--username", "first_admin",

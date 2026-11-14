@@ -16,16 +16,20 @@ import (
 	"github.com/pquerna/otp/totp"
 )
 
+// File này mã hóa TOTP secret và triển khai primitive xác minh MFA.
+
 const (
 	recoveryCodeRandomBytes = 10
 	totpPeriodSeconds       = 30
 )
 
+// MFASecretCodec mã hóa và giải mã khóa bí mật TOTP bằng AES-GCM với cơ chế luân chuyển khóa.
 type MFASecretCodec struct {
 	activeVersion string
 	keys          map[string][]byte
 }
 
+// NewMFASecretCodec khởi tạo MFASecretCodec với các dependency được cung cấp.
 func NewMFASecretCodec(
 	activeVersion string,
 	keys map[string][]byte,
@@ -49,6 +53,7 @@ func NewMFASecretCodec(
 	}, nil
 }
 
+// Encrypt mã hóa TOTP secret bằng active key version và AAD ổn định.
 func (c *MFASecretCodec) Encrypt(userID uint64, secret string) ([]byte, string, error) {
 	block, err := aes.NewCipher(c.keys[c.activeVersion])
 	if err != nil {
@@ -77,6 +82,7 @@ func (c *MFASecretCodec) Encrypt(userID uint64, secret string) ([]byte, string, 
 	return ciphertext, c.activeVersion, nil
 }
 
+// Decrypt chọn đúng key version và xác thực AAD trước khi trả TOTP secret.
 func (c *MFASecretCodec) Decrypt(
 	userID uint64,
 	keyVersion string,
@@ -110,6 +116,7 @@ func (c *MFASecretCodec) Decrypt(
 	return string(plaintext), nil
 }
 
+// generateRecoveryCodes tạo recovery code ngẫu nhiên và chỉ lưu bản hash.
 func generateRecoveryCodes(count int) ([]string, [][]byte, error) {
 	codes := make([]string, 0, count)
 	hashes := make([][]byte, 0, count)
@@ -132,6 +139,7 @@ func generateRecoveryCodes(count int) ([]string, [][]byte, error) {
 	return codes, hashes, nil
 }
 
+// recoveryCodeHash chuẩn hóa recovery code trước khi băm cùng pepper.
 func recoveryCodeHash(code string) ([]byte, bool) {
 	normalized := strings.ToUpper(strings.ReplaceAll(strings.TrimSpace(code), "-", ""))
 	if len(normalized) != 16 {
@@ -145,6 +153,7 @@ func recoveryCodeHash(code string) ([]byte, bool) {
 	return sum[:], true
 }
 
+// generateTOTPEnrollment tạo secret và provisioning URI tương thích authenticator app.
 func generateTOTPEnrollment(issuer string, accountName string) (
 	secret string,
 	enrollmentURI string,
@@ -156,8 +165,7 @@ func generateTOTPEnrollment(issuer string, accountName string) (
 		Period:      totpPeriodSeconds,
 		SecretSize:  20,
 		Digits:      otp.DigitsSix,
-		// HMAC-SHA1 is the interoperable RFC 6238 profile used by mainstream
-		// authenticator applications; it is not used as a collision hash.
+		// HMAC-SHA1 là profile RFC 6238 tương thích authenticator app, không dùng như collision hash.
 		Algorithm: otp.AlgorithmSHA1,
 		Rand:      rand.Reader,
 	})
@@ -167,6 +175,7 @@ func generateTOTPEnrollment(issuer string, accountName string) (
 	return key.Secret(), key.URL(), nil
 }
 
+// validateTOTPCode xác minh mã sáu chữ số trong time window được cấu hình.
 func validateTOTPCode(
 	secret string,
 	code string,
@@ -196,6 +205,7 @@ func validateTOTPCode(
 	return 0, false, nil
 }
 
+// isSixDigitCode chặn input sai định dạng trước khi chạy TOTP crypto.
 func isSixDigitCode(code string) bool {
 	if len(code) != 6 {
 		return false
@@ -208,6 +218,7 @@ func isSixDigitCode(code string) bool {
 	return true
 }
 
+// mfaSecretAAD ràng buộc ciphertext với user ID và key version.
 func mfaSecretAAD(userID uint64, keyVersion string) []byte {
 	return []byte(
 		"uam:mfa:totp:" + strconv.FormatUint(userID, 10) + ":" + keyVersion,

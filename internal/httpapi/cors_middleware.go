@@ -5,6 +5,9 @@ import (
 	"github.com/quocdev03/user-access-management/internal/config"
 )
 
+// File này áp dụng CORS allowlist mà không phản chiếu origin tùy ý.
+
+// CORSMiddleware chỉ cho phép origin trong allowlist khi credentials được bật.
 func CORSMiddleware(cfg *config.Config) gin.HandlerFunc {
 	return func(c *gin.Context) {
 		allowedOrigin := cfg.App.FrontendURL

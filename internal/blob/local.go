@@ -11,10 +11,14 @@ import (
 	"strings"
 )
 
+// File này lưu và đọc blob trên filesystem cho môi trường ngoài production.
+
+// LocalStore triển khai Store lưu trữ tệp tin trên filesystem cục bộ.
 type LocalStore struct {
 	root string
 }
 
+// NewLocalStore khởi tạo LocalStore với các dependency được cung cấp.
 func NewLocalStore(root string) (*LocalStore, error) {
 	absoluteRoot, err := filepath.Abs(root)
 	if err != nil {
@@ -26,6 +30,7 @@ func NewLocalStore(root string) (*LocalStore, error) {
 	return &LocalStore{root: absoluteRoot}, nil
 }
 
+// Put ghi atomically qua temporary file để tránh blob dở dang.
 func (s *LocalStore) Put(
 	ctx context.Context,
 	key string,
@@ -77,6 +82,7 @@ func (s *LocalStore) Put(
 	return nil
 }
 
+// Delete xóa blob local nhưng không coi key không tồn tại là lỗi.
 func (s *LocalStore) Delete(ctx context.Context, key string) error {
 	target, owned, err := s.resolve(key)
 	if err != nil {
@@ -99,6 +105,7 @@ func (s *LocalStore) Delete(ctx context.Context, key string) error {
 	return nil
 }
 
+// Open mở blob local sau khi xác minh đường dẫn không thoát storage root.
 func (s *LocalStore) Open(ctx context.Context, key string) (*os.File, error) {
 	target, owned, err := s.resolve(key)
 	if err != nil {
@@ -122,6 +129,7 @@ func (s *LocalStore) Open(ctx context.Context, key string) (*os.File, error) {
 	return file, nil
 }
 
+// URL trả về đường dẫn public tương ứng với blob key trong local store.
 func (s *LocalStore) URL(key string) string {
 	switch {
 	case key == "":
@@ -147,6 +155,7 @@ func (s *LocalStore) URL(key string) string {
 	return "/uploads/" + path.Join(parts...)
 }
 
+// resolve làm sạch blob key và từ chối path thoát khỏi local storage root.
 func (s *LocalStore) resolve(key string) (string, bool, error) {
 	normalized := filepath.ToSlash(strings.TrimSpace(key))
 	switch {

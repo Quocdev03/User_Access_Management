@@ -1,3 +1,4 @@
+// Package apperror định nghĩa các lỗi nghiệp vụ dùng chung tại application boundary.
 package apperror
 
 import (
@@ -5,6 +6,9 @@ import (
 	"net/http"
 )
 
+// File này định nghĩa sentinel error nghiệp vụ dùng để ánh xạ response ổn định.
+
+// AppError đóng gói thông tin lỗi nghiệp vụ chuẩn hóa bao gồm mã lỗi, thông điệp và mã trạng thái HTTP.
 type AppError struct {
 	Code       string      `json:"code"`
 	Message    string      `json:"message"`
@@ -13,6 +17,7 @@ type AppError struct {
 	RootErr    error       `json:"-"`
 }
 
+// Error trả message công khai để AppError thỏa mãn error interface.
 func (e *AppError) Error() string {
 	if e.RootErr != nil {
 		return fmt.Sprintf("[%s] %s: %v", e.Code, e.Message, e.RootErr)
@@ -20,25 +25,30 @@ func (e *AppError) Error() string {
 	return fmt.Sprintf("[%s] %s", e.Code, e.Message)
 }
 
+// Unwrap giữ nguyên nguyên nhân hệ thống cho errors.Is và errors.As.
 func (e *AppError) Unwrap() error {
 	return e.RootErr
 }
 
+// WithErr tạo bản sao AppError có nguyên nhân hệ thống mà không đổi sentinel gốc.
 func (e AppError) WithErr(err error) *AppError {
 	e.RootErr = err
 	return &e
 }
 
+// WithDetails tạo bản sao AppError kèm chi tiết validation an toàn.
 func (e AppError) WithDetails(details interface{}) *AppError {
 	e.Details = details
 	return &e
 }
 
+// WithMessage tạo bản sao AppError với public message theo ngữ cảnh use case.
 func (e AppError) WithMessage(msg string) *AppError {
 	e.Message = msg
 	return &e
 }
 
+// NewAppError khởi tạo AppError với các dependency được cung cấp.
 func NewAppError(code, message string, httpStatus int) *AppError {
 	return &AppError{
 		Code:       code,

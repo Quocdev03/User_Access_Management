@@ -8,6 +8,9 @@ import (
 	"github.com/spf13/viper"
 )
 
+// File này kiểm chứng hành vi config và các trường hợp lỗi liên quan.
+
+// TestLoadRejectsLocalBlobStorageInProduction kiểm chứng kịch bản LoadRejectsLocalBlobStorageInProduction.
 func TestLoadRejectsLocalBlobStorageInProduction(t *testing.T) {
 	setProductionConfig(t)
 	t.Setenv("BLOB_PROVIDER", "local")
@@ -18,6 +21,7 @@ func TestLoadRejectsLocalBlobStorageInProduction(t *testing.T) {
 	}
 }
 
+// TestLoadAcceptsS3WithWorkloadIdentity kiểm chứng kịch bản LoadAcceptsS3WithWorkloadIdentity.
 func TestLoadAcceptsS3WithWorkloadIdentity(t *testing.T) {
 	setProductionConfig(t)
 	t.Setenv("BLOB_PROVIDER", "s3")
@@ -34,6 +38,7 @@ func TestLoadAcceptsS3WithWorkloadIdentity(t *testing.T) {
 	}
 }
 
+// TestLoadRejectsInsecureProductionS3Endpoint kiểm chứng kịch bản LoadRejectsInsecureProductionS3Endpoint.
 func TestLoadRejectsInsecureProductionS3Endpoint(t *testing.T) {
 	setProductionConfig(t)
 	t.Setenv("BLOB_PROVIDER", "s3")
@@ -48,6 +53,7 @@ func TestLoadRejectsInsecureProductionS3Endpoint(t *testing.T) {
 	}
 }
 
+// TestLoadRejectsInsecureProductionDatabaseTLS kiểm chứng kịch bản LoadRejectsInsecureProductionDatabaseTLS.
 func TestLoadRejectsInsecureProductionDatabaseTLS(t *testing.T) {
 	setProductionConfig(t)
 	setProductionBlobConfig(t)
@@ -59,6 +65,7 @@ func TestLoadRejectsInsecureProductionDatabaseTLS(t *testing.T) {
 	}
 }
 
+// TestLoadAllowsExplicitEmergencyDatabaseTLSOverride kiểm chứng kịch bản LoadAllowsExplicitEmergencyDatabaseTLSOverride.
 func TestLoadAllowsExplicitEmergencyDatabaseTLSOverride(t *testing.T) {
 	setProductionConfig(t)
 	setProductionBlobConfig(t)
@@ -74,6 +81,7 @@ func TestLoadAllowsExplicitEmergencyDatabaseTLSOverride(t *testing.T) {
 	}
 }
 
+// TestLoadRejectsInvalidPortAndPoolBudget kiểm chứng kịch bản LoadRejectsInvalidPortAndPoolBudget.
 func TestLoadRejectsInvalidPortAndPoolBudget(t *testing.T) {
 	t.Run("port", func(t *testing.T) {
 		setProductionConfig(t)
@@ -99,6 +107,7 @@ func TestLoadRejectsInvalidPortAndPoolBudget(t *testing.T) {
 	})
 }
 
+// TestLoadAppliesSecurityAndPoolDefaults kiểm chứng kịch bản LoadAppliesSecurityAndPoolDefaults.
 func TestLoadAppliesSecurityAndPoolDefaults(t *testing.T) {
 	setProductionConfig(t)
 	setProductionBlobConfig(t)
@@ -124,6 +133,7 @@ func TestLoadAppliesSecurityAndPoolDefaults(t *testing.T) {
 	}
 }
 
+// TestLoadRejectsMissingOrMalformedProductionMFAKeys kiểm chứng kịch bản LoadRejectsMissingOrMalformedProductionMFAKeys.
 func TestLoadRejectsMissingOrMalformedProductionMFAKeys(t *testing.T) {
 	t.Run("missing", func(t *testing.T) {
 		setProductionConfig(t)
@@ -162,6 +172,19 @@ func TestLoadRejectsMissingOrMalformedProductionMFAKeys(t *testing.T) {
 	})
 }
 
+// TestLoadRejectsShortJWTSecret kiểm chứng kịch bản reject secret nhỏ hơn 32 ký tự.
+func TestLoadRejectsShortJWTSecret(t *testing.T) {
+	setProductionConfig(t)
+	setProductionBlobConfig(t)
+	t.Setenv("JWT_SECRET", "short-secret-less-than-32-bytes")
+
+	_, err := Load(t.TempDir())
+	if err == nil || (!strings.Contains(err.Error(), "JWT_SECRET") && !strings.Contains(err.Error(), "validation failed")) {
+		t.Fatalf("expected error for short JWT secret, got: %v", err)
+	}
+}
+
+// setProductionBlobConfig đặt production blob cấu hình trước khi runtime dependency được khởi tạo.
 func setProductionBlobConfig(t *testing.T) {
 	t.Helper()
 	t.Setenv("BLOB_PROVIDER", "s3")
@@ -170,6 +193,7 @@ func setProductionBlobConfig(t *testing.T) {
 	t.Setenv("S3_PUBLIC_BASE_URL", "https://avatars.example.test")
 }
 
+// setProductionConfig đặt production cấu hình trước khi runtime dependency được khởi tạo.
 func setProductionConfig(t *testing.T) {
 	t.Helper()
 	viper.Reset()
@@ -185,7 +209,7 @@ func setProductionConfig(t *testing.T) {
 		"DB_PASSWORD":            "secret",
 		"DB_TLS_MODE":            "verify",
 		"REDIS_HOST":             "rediss://redis.example.test:6379",
-		"JWT_SECRET":             "production-test-secret",
+		"JWT_SECRET":             "production-test-secret-min-32-chars",
 		"JWT_ACCESS_EXPIRY":      "15m",
 		"JWT_REFRESH_EXPIRY":     "168h",
 		"RATE_LIMIT_WINDOW":      "1m",

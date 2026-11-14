@@ -15,7 +15,7 @@ System role `admin` bypasses permission lookup; custom roles work without a hard
 | ACCESS-USER-PASSWORD-RESET | `POST /admin/users/{id}/password/reset` | `users.reset_password` | Revoke current sessions and enqueue an encrypted one-time reset link; never create or mail a temporary password |
 | ACCESS-USER-NOTIFY | `POST /admin/users/{id}/notify` | `users.notify` | Notify active target; escape subject/message and append audit |
 
-Actor without durable admin role cannot mutate an admin target. An admin cannot disable/lock/remove the final usable admin. Status/identity/password changes increment target auth version transactionally.
+Actor without durable admin role cannot mutate an admin target. An admin cannot disable/lock/remove the final usable admin (áp dụng [LastAdminGuard](file:///c:/Users/ccquo/Downloads/Compressed/user_access_management/docs/domain/access-control.md#system-roles-and-last-admin-invariant)). Status/identity/password changes increment target auth version transactionally.
 
 ## Role administration
 
@@ -27,7 +27,7 @@ Actor without durable admin role cannot mutate an admin target. An admin cannot 
 | ACCESS-ROLE-DELETE | `DELETE /admin/roles/{id}` | `roles.delete` | Reject system or assigned role |
 | ACCESS-ROLE-PERMISSIONS-REPLACE | `PUT /admin/roles/{id}/permissions` | `permissions.assign` | Validate every permission ID and replace set in one transaction |
 | ACCESS-ROLE-ASSIGN | `POST /admin/users/{id}/roles` | `roles.assign` | Validate role; assigning admin requires admin actor |
-| ACCESS-ROLE-REMOVE | `DELETE /admin/users/{id}/roles/{roleId}` | `roles.assign` | Removing admin requires admin actor and last-admin guard |
+| ACCESS-ROLE-REMOVE | `DELETE /admin/users/{id}/roles/{roleId}` | `roles.assign` | Removing admin requires admin actor and [LastAdminGuard](file:///c:/Users/ccquo/Downloads/Compressed/user_access_management/docs/domain/access-control.md#system-roles-and-last-admin-invariant) |
 
 Role assignment/removal locks in deterministic order, appends audit and increments target user's auth version in the same transaction.
 

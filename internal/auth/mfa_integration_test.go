@@ -22,6 +22,9 @@ import (
 	"go.uber.org/zap"
 )
 
+// File này kiểm chứng tích hợp mfa integration với các dependency runtime liên quan.
+
+// TestMFAEnrollmentLoginConcurrencyRecoveryAndDisable kiểm chứng kịch bản MFAEnrollmentLoginConcurrencyRecoveryAndDisable.
 func TestMFAEnrollmentLoginConcurrencyRecoveryAndDisable(t *testing.T) {
 	redisAddress := os.Getenv("UAM_REDIS_TEST_ADDR")
 	if redisAddress == "" {
@@ -97,17 +100,16 @@ func TestMFAEnrollmentLoginConcurrencyRecoveryAndDisable(t *testing.T) {
 	}
 	mfa := auth.NewMFA(
 		auth.MFADependencies{
-			DB:                 db,
-			Accounts:           accounts,
-			Profiles:           profiles,
-			Roles:              roles,
-			Audits:             audits,
-			Store:              mfaStore,
-			Challenges:         challenges,
-			Issuer:             issuer,
-			AuthInvalidator:    mysqlstore.NewAuthInvalidator(db),
-			SessionInvalidator: sessionInvalidator,
-			Codec:              secretCodec,
+			DB:              db,
+			Accounts:        accounts,
+			Profiles:        profiles,
+			Roles:           roles,
+			Audits:          audits,
+			Store:           mfaStore,
+			Challenges:      challenges,
+			Issuer:          issuer,
+			AuthInvalidator: mysqlstore.NewAuthInvalidator(db),
+			Codec:           secretCodec,
 		},
 		auth.MFAPolicy{
 			Issuer:            "MFA Integration",
@@ -284,6 +286,7 @@ func TestMFAEnrollmentLoginConcurrencyRecoveryAndDisable(t *testing.T) {
 	}
 }
 
+// authenticateMFAChallenge tạo login challenge hợp lệ cho bước xác minh TOTP.
 func authenticateMFAChallenge(
 	t *testing.T,
 	login *auth.Login,
@@ -306,6 +309,7 @@ func authenticateMFAChallenge(
 	return result.MFAChallenge
 }
 
+// integrationTOTPCode sinh mã TOTP tại thời điểm cố định từ secret fixture.
 func integrationTOTPCode(
 	t *testing.T,
 	secret string,

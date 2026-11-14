@@ -18,6 +18,9 @@ import (
 	"github.com/quocdev03/user-access-management/pkg/hash"
 )
 
+// File này kiểm chứng tích hợp migrate bootstrap security integration với các dependency runtime liên quan.
+
+// TestNeutralizeKnownBootstrapAdminMigration kiểm chứng kịch bản NeutralizeKnownBootstrapAdminMigration.
 func TestNeutralizeKnownBootstrapAdminMigration(t *testing.T) {
 	cfg := mysqlDriver.Config{
 		User:                 os.Getenv("UAM_MIGRATION_TEST_DB_USER"),
@@ -132,6 +135,7 @@ func TestNeutralizeKnownBootstrapAdminMigration(t *testing.T) {
 	assertUserCount(t, db, bootstrapLookup, 1)
 }
 
+// assertUserCount kiểm tra số account còn khớp sau bootstrap-security migration.
 func assertUserCount(t *testing.T, db *sql.DB, lookup string, want int) {
 	t.Helper()
 

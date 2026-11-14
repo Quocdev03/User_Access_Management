@@ -19,6 +19,9 @@ import (
 	"go.uber.org/zap"
 )
 
+// File này kiểm chứng tích hợp login integration với các dependency runtime liên quan.
+
+// TestLoginIssuesCanonicalSessionAndAudit kiểm chứng kịch bản LoginIssuesCanonicalSessionAndAudit.
 func TestLoginIssuesCanonicalSessionAndAudit(t *testing.T) {
 	db := openAuthIntegrationDB(t)
 	login, email, password, userID := verifiedLoginFixture(t, db, "success")
@@ -70,6 +73,7 @@ func TestLoginIssuesCanonicalSessionAndAudit(t *testing.T) {
 	)
 }
 
+// TestLoginWrongPasswordCommitsAttempt kiểm chứng kịch bản LoginWrongPasswordCommitsAttempt.
 func TestLoginWrongPasswordCommitsAttempt(t *testing.T) {
 	db := openAuthIntegrationDB(t)
 	login, email, _, userID := verifiedLoginFixture(t, db, "wrong_password")
@@ -102,6 +106,7 @@ func TestLoginWrongPasswordCommitsAttempt(t *testing.T) {
 	)
 }
 
+// TestLoginDoesNotRevealDisabledStateBeforeCredentialProof kiểm chứng kịch bản LoginDoesNotRevealDisabledStateBeforeCredentialProof.
 func TestLoginDoesNotRevealDisabledStateBeforeCredentialProof(t *testing.T) {
 	db := openAuthIntegrationDB(t)
 	login, email, password, userID := verifiedLoginFixture(t, db, "disabled_state")
@@ -131,6 +136,7 @@ func TestLoginDoesNotRevealDisabledStateBeforeCredentialProof(t *testing.T) {
 	}
 }
 
+// TestLoginRejectsCredentialChangedAfterBcryptSnapshot kiểm chứng kịch bản LoginRejectsCredentialChangedAfterBcryptSnapshot.
 func TestLoginRejectsCredentialChangedAfterBcryptSnapshot(t *testing.T) {
 	db := openAuthIntegrationDB(t)
 	login, email, oldPassword, userID := verifiedLoginFixture(t, db, "snapshot")
@@ -197,6 +203,7 @@ func TestLoginRejectsCredentialChangedAfterBcryptSnapshot(t *testing.T) {
 	)
 }
 
+// verifiedLoginFixture tạo account đã xác minh với credential dùng cho login test.
 func verifiedLoginFixture(
 	t *testing.T,
 	db *sqlx.DB,
@@ -266,6 +273,7 @@ func verifiedLoginFixture(
 	return login, email, password, registered.ID
 }
 
+// waitForLoginRowLock chờ transaction giữ account row lock trước khi phát request cạnh tranh.
 func waitForLoginRowLock(t *testing.T, db *sqlx.DB) {
 	t.Helper()
 	deadline := time.Now().Add(5 * time.Second)
@@ -288,16 +296,20 @@ func waitForLoginRowLock(t *testing.T, db *sqlx.DB) {
 	t.Fatal("login did not reach account row lock")
 }
 
+// loginTokenState là stub triển khai TokenState phục vụ integration test đăng nhập.
 type loginTokenState struct{}
 
+// BlacklistJTI ghi nhận JTI mà login fixture yêu cầu blacklist.
 func (*loginTokenState) BlacklistJTI(context.Context, string, time.Duration) error {
 	return nil
 }
 
+// IsRefreshReuseMarked đọc reuse marker từ in-memory token state.
 func (*loginTokenState) IsRefreshReuseMarked(context.Context, string) (bool, error) {
 	return false, nil
 }
 
+// MarkRefreshReuse lưu reuse marker trong in-memory token state.
 func (*loginTokenState) MarkRefreshReuse(context.Context, string, time.Duration) error {
 	return nil
 }

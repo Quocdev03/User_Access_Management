@@ -4,11 +4,13 @@ import (
 	"fmt"
 
 	"github.com/jmoiron/sqlx"
-	"github.com/quocdev03/user-access-management/internal/config"
 )
 
-func ConnectMySQL(cfg config.DatabaseConfig) (*sqlx.DB, error) {
-	mysqlCfg, err := newMySQLConfig(cfg, false)
+// File này mở MySQL connection pool từ cấu hình đã kiểm tra.
+
+// ConnectMySQL mở connection pool và ping MySQL trước khi trả cho runtime.
+func ConnectMySQL(opts MySQLOptions) (*sqlx.DB, error) {
+	mysqlCfg, err := newMySQLConfig(opts, false)
 	if err != nil {
 		return nil, err
 	}
@@ -17,10 +19,10 @@ func ConnectMySQL(cfg config.DatabaseConfig) (*sqlx.DB, error) {
 		return nil, fmt.Errorf("failed to connect to MySQL: %w", err)
 	}
 
-	db.SetMaxOpenConns(cfg.MaxOpenConns)
-	db.SetMaxIdleConns(cfg.MaxIdleConns)
-	db.SetConnMaxLifetime(cfg.ConnMaxLifetime)
-	db.SetConnMaxIdleTime(cfg.ConnMaxIdleTime)
+	db.SetMaxOpenConns(opts.MaxOpenConns)
+	db.SetMaxIdleConns(opts.MaxIdleConns)
+	db.SetConnMaxLifetime(opts.ConnMaxLifetime)
+	db.SetConnMaxIdleTime(opts.ConnMaxIdleTime)
 
 	return db, nil
 }

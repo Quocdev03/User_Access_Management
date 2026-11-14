@@ -11,6 +11,9 @@ import (
 	"github.com/quocdev03/user-access-management/pkg/response"
 )
 
+// File này giới hạn request body trước bước bind để giảm rủi ro tài nguyên.
+
+// BodyLimitMiddleware từ chối request body vượt giới hạn trước bước bind.
 func BodyLimitMiddleware(jsonMaxBytes, multipartMaxBytes int64) gin.HandlerFunc {
 	return func(c *gin.Context) {
 		limit := jsonMaxBytes
@@ -36,6 +39,7 @@ func BodyLimitMiddleware(jsonMaxBytes, multipartMaxBytes int64) gin.HandlerFunc 
 
 const multipartFileKeyPrefix = "validatedMultipartFile:"
 
+// ValidateMultipartFile kiểm tra multipart file tại HTTP boundary.
 func ValidateMultipartFile(field string) gin.HandlerFunc {
 	return func(c *gin.Context) {
 		fileHeader, err := c.FormFile(field)
@@ -54,6 +58,7 @@ func ValidateMultipartFile(field string) gin.HandlerFunc {
 	}
 }
 
+// ValidatedMultipartFile giới hạn kích thước và loại nội dung trước khi đọc upload vào memory.
 func ValidatedMultipartFile(c *gin.Context, field string) (*multipart.FileHeader, bool) {
 	value, exists := c.Get(multipartFileKeyPrefix + field)
 	if !exists {

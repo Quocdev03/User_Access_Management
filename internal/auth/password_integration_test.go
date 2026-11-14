@@ -17,6 +17,9 @@ import (
 	"github.com/quocdev03/user-access-management/pkg/hash"
 )
 
+// File này kiểm chứng tích hợp password integration với các dependency runtime liên quan.
+
+// TestPasswordResetUsesVersionedTokenAndInvalidatesAuth kiểm chứng kịch bản PasswordResetUsesVersionedTokenAndInvalidatesAuth.
 func TestPasswordResetUsesVersionedTokenAndInvalidatesAuth(t *testing.T) {
 	db := openAuthIntegrationDB(t)
 	login, email, currentPassword, userID := verifiedLoginFixture(t, db, "password_reset")
@@ -101,6 +104,7 @@ func TestPasswordResetUsesVersionedTokenAndInvalidatesAuth(t *testing.T) {
 	)
 }
 
+// TestConcurrentPasswordResetHasOneWinner kiểm chứng kịch bản ConcurrentPasswordResetHasOneWinner.
 func TestConcurrentPasswordResetHasOneWinner(t *testing.T) {
 	db := openAuthIntegrationDB(t)
 	_, email, _, userID := verifiedLoginFixture(t, db, "password_reset_race")
@@ -142,6 +146,7 @@ func TestConcurrentPasswordResetHasOneWinner(t *testing.T) {
 	assertScalar(t, db, "SELECT COUNT(*) FROM audit_logs WHERE user_id = ? AND action = 'PASSWORD_RESET'", userID, 1)
 }
 
+// TestChangePasswordWrongCredentialCommitsAttempt kiểm chứng kịch bản ChangePasswordWrongCredentialCommitsAttempt.
 func TestChangePasswordWrongCredentialCommitsAttempt(t *testing.T) {
 	db := openAuthIntegrationDB(t)
 	_, _, _, userID := verifiedLoginFixture(t, db, "password_change_wrong")
@@ -176,6 +181,7 @@ func TestChangePasswordWrongCredentialCommitsAttempt(t *testing.T) {
 	)
 }
 
+// TestPasswordCredentialSnapshotsRejectConcurrentMutation kiểm chứng kịch bản PasswordCredentialSnapshotsRejectConcurrentMutation.
 func TestPasswordCredentialSnapshotsRejectConcurrentMutation(t *testing.T) {
 	tests := []struct {
 		name      string
@@ -359,6 +365,7 @@ func TestPasswordCredentialSnapshotsRejectConcurrentMutation(t *testing.T) {
 	}
 }
 
+// passwordFixture tạo account đã xác minh với password hash dùng cho integration test.
 func passwordFixture(
 	t *testing.T,
 	db *sqlx.DB,
@@ -385,6 +392,7 @@ func passwordFixture(
 	), codec
 }
 
+// passwordResetToken giải mã reset token từ durable outbox fixture.
 func passwordResetToken(
 	t *testing.T,
 	db *sqlx.DB,

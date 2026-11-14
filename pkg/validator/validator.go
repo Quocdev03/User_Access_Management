@@ -1,3 +1,4 @@
+// Package validator cung cấp các kiểm tra định dạng dùng chung tại boundary.
 package validator
 
 import (
@@ -14,8 +15,11 @@ import (
 	"github.com/quocdev03/user-access-management/pkg/response"
 )
 
+// File này kiểm tra email, username và số điện thoại trước các bước tốn tài nguyên.
+
 const validatedBodyKey = "validatedJSONBody"
 
+// init đăng ký hoặc chuẩn bị dependency bắt buộc trước khi package được sử dụng.
 func init() {
 	engine, ok := binding.Validator.Engine().(*playvalidator.Validate)
 	if !ok {
@@ -42,6 +46,7 @@ func init() {
 	}
 }
 
+// ValidateJSON bind request JSON và trả validation error có field metadata.
 func ValidateJSON[T any]() gin.HandlerFunc {
 	return func(c *gin.Context) {
 		var req T
@@ -60,6 +65,7 @@ func ValidateJSON[T any]() gin.HandlerFunc {
 	}
 }
 
+// BindAndValidate bind JSON, chạy validator và tự ghi response 400 khi input không hợp lệ.
 func BindAndValidate[T any](c *gin.Context) (*T, bool) {
 	if value, exists := c.Get(validatedBodyKey); exists {
 		if req, ok := value.(*T); ok {

@@ -16,6 +16,9 @@ import (
 	_ "github.com/golang-migrate/migrate/v4/source/file"
 )
 
+// File này kiểm chứng tích hợp migrate canonical schema integration với các dependency runtime liên quan.
+
+// TestCanonicalSchemaEmptyDatabaseMigration kiểm chứng kịch bản CanonicalSchemaEmptyDatabaseMigration.
 func TestCanonicalSchemaEmptyDatabaseMigration(t *testing.T) {
 	db, migrator, databaseName := canonicalSchemaMigrator(t)
 
@@ -25,6 +28,7 @@ func TestCanonicalSchemaEmptyDatabaseMigration(t *testing.T) {
 	assertCanonicalSchema(t, db, databaseName)
 }
 
+// TestCanonicalSchemaCurrentDataMigration kiểm chứng kịch bản CanonicalSchemaCurrentDataMigration.
 func TestCanonicalSchemaCurrentDataMigration(t *testing.T) {
 	db, migrator, databaseName := canonicalSchemaMigrator(t)
 
@@ -40,6 +44,7 @@ func TestCanonicalSchemaCurrentDataMigration(t *testing.T) {
 	assertCanonicalSchemaData(t, db)
 }
 
+// TestCanonicalSchemaDuplicatePermissionMigrationStops kiểm chứng kịch bản CanonicalSchemaDuplicatePermissionMigrationStops.
 func TestCanonicalSchemaDuplicatePermissionMigrationStops(t *testing.T) {
 	db, migrator, _ := canonicalSchemaMigrator(t)
 
@@ -76,6 +81,7 @@ func TestCanonicalSchemaDuplicatePermissionMigrationStops(t *testing.T) {
 	)
 }
 
+// canonicalSchemaMigrator tạo migrator tại mốc trước canonical-schema phases.
 func canonicalSchemaMigrator(t *testing.T) (*sql.DB, *migrate.Migrate, string) {
 	t.Helper()
 
@@ -130,6 +136,7 @@ func canonicalSchemaMigrator(t *testing.T) (*sql.DB, *migrate.Migrate, string) {
 	return db, migrator, cfg.DBName
 }
 
+// insertCanonicalSchemaFixture seed legacy-shaped data để kiểm chứng backfill.
 func insertCanonicalSchemaFixture(t *testing.T, db *sql.DB) {
 	t.Helper()
 
@@ -201,6 +208,7 @@ func insertCanonicalSchemaFixture(t *testing.T, db *sql.DB) {
 	}
 }
 
+// assertCanonicalSchema kiểm tra bảng, column, index và constraint canonical.
 func assertCanonicalSchema(t *testing.T, db *sql.DB, databaseName string) {
 	t.Helper()
 
@@ -319,6 +327,7 @@ func assertCanonicalSchema(t *testing.T, db *sql.DB, databaseName string) {
 	}
 }
 
+// assertCanonicalSchemaData xác nhận backfill giữ đúng account, session và RBAC data.
 func assertCanonicalSchemaData(t *testing.T, db *sql.DB) {
 	t.Helper()
 
@@ -380,6 +389,7 @@ func assertCanonicalSchemaData(t *testing.T, db *sql.DB) {
 	)
 }
 
+// assertScalar đọc một giá trị migration và so sánh với kỳ vọng.
 func assertScalar(t *testing.T, db *sql.DB, query string, want int) {
 	t.Helper()
 

@@ -17,6 +17,9 @@ import (
 	"github.com/quocdev03/user-access-management/pkg/hash"
 )
 
+// File này kiểm chứng tích hợp email integration với các dependency runtime liên quan.
+
+// TestEmailChangeUsesDurableRequestChallengesAndOutbox kiểm chứng kịch bản EmailChangeUsesDurableRequestChallengesAndOutbox.
 func TestEmailChangeUsesDurableRequestChallengesAndOutbox(t *testing.T) {
 	db := openAccountIntegrationDB(t)
 	email, codec, userID, oldEmail, password := emailFixture(t, db, "durable")
@@ -134,6 +137,7 @@ func TestEmailChangeUsesDurableRequestChallengesAndOutbox(t *testing.T) {
 	)
 }
 
+// TestConcurrentEmailChangeResendLeavesOnePendingWorkflow kiểm chứng kịch bản ConcurrentEmailChangeResendLeavesOnePendingWorkflow.
 func TestConcurrentEmailChangeResendLeavesOnePendingWorkflow(t *testing.T) {
 	db := openAccountIntegrationDB(t)
 	email, _, userID, _, password := emailFixture(t, db, "resend")
@@ -186,6 +190,7 @@ func TestConcurrentEmailChangeResendLeavesOnePendingWorkflow(t *testing.T) {
 	)
 }
 
+// TestConcurrentEmailChangeVerifyHasOneWinner kiểm chứng kịch bản ConcurrentEmailChangeVerifyHasOneWinner.
 func TestConcurrentEmailChangeVerifyHasOneWinner(t *testing.T) {
 	db := openAccountIntegrationDB(t)
 	email, codec, userID, _, password := emailFixture(t, db, "verify_race")
@@ -238,6 +243,7 @@ func TestConcurrentEmailChangeVerifyHasOneWinner(t *testing.T) {
 	)
 }
 
+// TestEmailChangeConflictCancelsWorkflowWithoutChangingAccount kiểm chứng kịch bản EmailChangeConflictCancelsWorkflowWithoutChangingAccount.
 func TestEmailChangeConflictCancelsWorkflowWithoutChangingAccount(t *testing.T) {
 	db := openAccountIntegrationDB(t)
 	email, codec, userID, oldEmail, password := emailFixture(t, db, "conflict")
@@ -295,6 +301,7 @@ func TestEmailChangeConflictCancelsWorkflowWithoutChangingAccount(t *testing.T) 
 	assertAccountScalar(t, db, "SELECT COUNT(*) FROM sessions WHERE user_id = ?", userID, 1)
 }
 
+// emailFixture tạo account đã xác minh cho email-change integration test.
 func emailFixture(
 	t *testing.T,
 	db *sqlx.DB,
@@ -370,6 +377,7 @@ func emailFixture(
 	), codec, userID, oldEmail, password
 }
 
+// emailChangeOTP giải mã OTP đổi email từ durable outbox fixture.
 func emailChangeOTP(
 	t *testing.T,
 	db *sqlx.DB,
@@ -399,6 +407,7 @@ func emailChangeOTP(
 	return message.Secret
 }
 
+// differentAccountOTP tạo OTP khác nhưng vẫn đúng định dạng để kiểm tra ownership.
 func differentAccountOTP(otp string) string {
 	if otp[0] == '0' {
 		return "1" + otp[1:]

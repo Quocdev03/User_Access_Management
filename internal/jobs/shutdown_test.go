@@ -9,6 +9,9 @@ import (
 	"go.uber.org/zap"
 )
 
+// File này kiểm chứng hành vi shutdown và các trường hợp lỗi liên quan.
+
+// TestWorkersStopWhenContextIsAlreadyCancelled kiểm chứng kịch bản WorkersStopWhenContextIsAlreadyCancelled.
 func TestWorkersStopWhenContextIsAlreadyCancelled(t *testing.T) {
 	ctx, cancel := context.WithCancel(context.Background())
 	cancel()

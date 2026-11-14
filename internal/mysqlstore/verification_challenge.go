@@ -11,6 +11,9 @@ import (
 	"github.com/quocdev03/user-access-management/pkg/apperror"
 )
 
+// File này lưu và consume email-verification challenge trong MySQL.
+
+// VerificationChallenge ánh xạ bản ghi thử thách xác minh OTP từ bảng verification_challenges trong MySQL.
 type VerificationChallenge struct {
 	ID                   uint64     `db:"id"`
 	RequestID            string     `db:"request_id"`
@@ -25,14 +28,17 @@ type VerificationChallenge struct {
 	CreatedAt            time.Time  `db:"created_at"`
 }
 
+// VerificationChallengeStore quản lý việc lưu trữ, kiểm tra số lần thử và hoàn tất các thử thách OTP trong MySQL.
 type VerificationChallengeStore struct {
 	db *sqlx.DB
 }
 
+// NewVerificationChallengeStore khởi tạo VerificationChallengeStore với các dependency được cung cấp.
 func NewVerificationChallengeStore(db *sqlx.DB) *VerificationChallengeStore {
 	return &VerificationChallengeStore{db: db}
 }
 
+// InvalidateActive vô hiệu hóa active tại MySQL adapter và giữ mapping persistence khỏi domain.
 func (s *VerificationChallengeStore) InvalidateActive(
 	ctx context.Context,
 	userID uint64,
@@ -53,6 +59,7 @@ func (s *VerificationChallengeStore) InvalidateActive(
 	return nil
 }
 
+// Create lưu email-verification challenge trong transaction hiện tại.
 func (s *VerificationChallengeStore) Create(
 	ctx context.Context,
 	challenge *VerificationChallenge,
@@ -83,6 +90,7 @@ func (s *VerificationChallengeStore) Create(
 	return nil
 }
 
+// FindLatestActiveForUpdate khóa verification challenge mới nhất còn hiệu lực để consume an toàn.
 func (s *VerificationChallengeStore) FindLatestActiveForUpdate(
 	ctx context.Context,
 	userID uint64,
@@ -116,6 +124,7 @@ func (s *VerificationChallengeStore) FindLatestActiveForUpdate(
 	return &challenge, nil
 }
 
+// FindEmailChangeForUpdate truy vấn email thay đổi cho cập nhật và khóa bản ghi trong transaction hiện tại để tránh lost update.
 func (s *VerificationChallengeStore) FindEmailChangeForUpdate(
 	ctx context.Context,
 	emailChangeRequestID string,
@@ -146,6 +155,7 @@ func (s *VerificationChallengeStore) FindEmailChangeForUpdate(
 	return &challenge, nil
 }
 
+// IncrementAttempts tăng attempts tại MySQL adapter và giữ mapping persistence khỏi domain.
 func (s *VerificationChallengeStore) IncrementAttempts(
 	ctx context.Context,
 	id uint64,
@@ -176,6 +186,7 @@ func (s *VerificationChallengeStore) IncrementAttempts(
 	return attempts, nil
 }
 
+// Consume đánh dấu verification challenge đã dùng bằng conditional update.
 func (s *VerificationChallengeStore) Consume(
 	ctx context.Context,
 	id uint64,
@@ -203,6 +214,7 @@ func (s *VerificationChallengeStore) Consume(
 	return nil
 }
 
+// DeleteExpiredBatch xóa expired batch tại MySQL adapter và giữ mapping persistence khỏi domain.
 func (s *VerificationChallengeStore) DeleteExpiredBatch(
 	ctx context.Context,
 	threshold time.Time,

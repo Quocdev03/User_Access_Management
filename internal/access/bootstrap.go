@@ -9,8 +9,12 @@ import (
 	"github.com/jmoiron/sqlx"
 	"github.com/quocdev03/user-access-management/internal/accountstate"
 	"github.com/quocdev03/user-access-management/internal/mysqlstore"
+	"github.com/quocdev03/user-access-management/pkg/apperror"
 )
 
+// File này tạo use case access với các dependency dùng chung.
+
+// BootstrapAccount chứa thông tin khởi tạo tài khoản quản trị viên trong quá trình bootstrap.
 type BootstrapAccount struct {
 	ID           uint64
 	Username     string
@@ -21,6 +25,7 @@ type BootstrapAccount struct {
 	DateOfBirth  time.Time
 }
 
+// Bootstrap thực thi use case khởi tạo quản trị viên đầu tiên và cấu hình vai trò mặc định.
 type Bootstrap struct {
 	accounts  *mysqlstore.AccountStore
 	profiles  *mysqlstore.ProfileStore
@@ -29,6 +34,7 @@ type Bootstrap struct {
 	txManager *mysqlstore.TxManager
 }
 
+// NewBootstrap khởi tạo Bootstrap với các dependency được cung cấp.
 func NewBootstrap(
 	db *sqlx.DB,
 	accounts *mysqlstore.AccountStore,
@@ -45,6 +51,7 @@ func NewBootstrap(
 	}
 }
 
+// Create khởi tạo tài khoản quản trị đầu tiên khi hệ thống chưa có admin.
 func (b *Bootstrap) Create(ctx context.Context, account *BootstrapAccount) error {
 	now := time.Now().UTC()
 	return b.txManager.RunInTx(ctx, func(txCtx context.Context) error {
@@ -54,6 +61,13 @@ func (b *Bootstrap) Create(ctx context.Context, account *BootstrapAccount) error
 		}
 		if adminRole == nil {
 			return errors.New("admin role is missing; apply database migrations first")
+		}
+		adminUserIDs, err := b.access.LockUserIDsByRole(txCtx, adminRole.ID)
+		if err != nil {
+			return err
+		}
+		if len(adminUserIDs) > 0 {
+			return apperror.ErrConflict.WithMessage("Hệ thống đã có quản trị viên, không thể chạy bootstrap admin")
 		}
 		registration := &mysqlstore.RegistrationAccount{
 			Username:     account.Username,

@@ -6,6 +6,9 @@ import (
 	"github.com/quocdev03/user-access-management/pkg/validator"
 )
 
+// File này đăng ký các route quản trị dưới authorization middleware.
+
+// setupAdminRoutes gắn admin routes với auth và permission middleware tương ứng.
 func setupAdminRoutes(
 	rg *gin.RouterGroup,
 	adminHandler *AdminHandler,
@@ -28,8 +31,8 @@ func setupAdminRoutes(
 	)
 	users.PUT(
 		"/:id",
-		validator.ValidateJSON[AdminUpdateUserRequest](),
 		PermissionMiddleware(authorizer, "users.update"),
+		validator.ValidateJSON[AdminUpdateUserRequest](),
 		adminHandler.UpdateUser,
 	)
 	users.PATCH(

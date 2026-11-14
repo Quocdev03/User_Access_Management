@@ -16,6 +16,9 @@ import (
 	_ "github.com/golang-migrate/migrate/v4/source/file"
 )
 
+// File này kiểm chứng tích hợp migrate mfa integration với các dependency runtime liên quan.
+
+// TestMFAMigrationCurrentData kiểm chứng kịch bản MFAMigrationCurrentData.
 func TestMFAMigrationCurrentData(t *testing.T) {
 	db, migrator, databaseName := mfaMigrationMigrator(
 		t,
@@ -52,6 +55,7 @@ func TestMFAMigrationCurrentData(t *testing.T) {
 	}
 }
 
+// TestMFAMigrationEmptyUp kiểm chứng kịch bản MFAMigrationEmptyUp.
 func TestMFAMigrationEmptyUp(t *testing.T) {
 	db, migrator, databaseName := mfaMigrationMigrator(
 		t,
@@ -63,6 +67,7 @@ func TestMFAMigrationEmptyUp(t *testing.T) {
 	assertMFAMigrationSchema(t, db, databaseName)
 }
 
+// mfaMigrationMigrator tạo migrator bắt đầu tại schema ngay trước MFA phase.
 func mfaMigrationMigrator(
 	t *testing.T,
 	databaseNameEnv string,
@@ -117,6 +122,7 @@ func mfaMigrationMigrator(
 	return db, migrator, cfg.DBName
 }
 
+// assertMFAMigrationSchema kiểm tra bảng, index và constraint MFA sau migration.
 func assertMFAMigrationSchema(t *testing.T, db *sql.DB, databaseName string) {
 	t.Helper()
 	var version uint

@@ -18,6 +18,9 @@ import (
 	"go.uber.org/zap"
 )
 
+// File này kiểm chứng tích hợp avatar integration với các dependency runtime liên quan.
+
+// fakeBlobStore là in-memory blob store giả lập phục vụ integration test cho avatar.
 type fakeBlobStore struct {
 	mu         sync.Mutex
 	objects    map[string][]byte
@@ -25,6 +28,7 @@ type fakeBlobStore struct {
 	deleted    []string
 }
 
+// newFakeBlobStore tạo in-memory blob store để quan sát side effect của avatar use case.
 func newFakeBlobStore() *fakeBlobStore {
 	return &fakeBlobStore{
 		objects:    make(map[string][]byte),
@@ -32,6 +36,7 @@ func newFakeBlobStore() *fakeBlobStore {
 	}
 }
 
+// Put ghi put trong account use case.
 func (s *fakeBlobStore) Put(
 	_ context.Context,
 	key string,
@@ -47,6 +52,7 @@ func (s *fakeBlobStore) Put(
 	return nil
 }
 
+// Delete ghi nhận blob key bị xóa trong fake avatar store.
 func (s *fakeBlobStore) Delete(_ context.Context, key string) error {
 	s.mu.Lock()
 	defer s.mu.Unlock()
@@ -58,10 +64,12 @@ func (s *fakeBlobStore) Delete(_ context.Context, key string) error {
 	return nil
 }
 
+// URL tạo fake public URL ổn định cho blob key đã ghi.
 func (s *fakeBlobStore) URL(key string) string {
 	return "/blob/" + key
 }
 
+// TestAvatarUploadAndDeleteSwapCanonicalObjectKey kiểm chứng kịch bản AvatarUploadAndDeleteSwapCanonicalObjectKey.
 func TestAvatarUploadAndDeleteSwapCanonicalObjectKey(t *testing.T) {
 	db := openAccountIntegrationDB(t)
 	_, userID := profileFixture(t, db, "avatar_swap")
@@ -158,6 +166,7 @@ func TestAvatarUploadAndDeleteSwapCanonicalObjectKey(t *testing.T) {
 	)
 }
 
+// TestAvatarUploadDatabaseFailureRemovesNewBlob kiểm chứng kịch bản AvatarUploadDatabaseFailureRemovesNewBlob.
 func TestAvatarUploadDatabaseFailureRemovesNewBlob(t *testing.T) {
 	db := openAccountIntegrationDB(t)
 	blobs := newFakeBlobStore()
@@ -178,6 +187,7 @@ func TestAvatarUploadDatabaseFailureRemovesNewBlob(t *testing.T) {
 	}
 }
 
+// TestAvatarOldBlobCleanupFailureDoesNotRollbackNewAvatar kiểm chứng kịch bản AvatarOldBlobCleanupFailureDoesNotRollbackNewAvatar.
 func TestAvatarOldBlobCleanupFailureDoesNotRollbackNewAvatar(t *testing.T) {
 	db := openAccountIntegrationDB(t)
 	_, userID := profileFixture(t, db, "avatar_cleanup_failure")
@@ -220,6 +230,7 @@ func TestAvatarOldBlobCleanupFailureDoesNotRollbackNewAvatar(t *testing.T) {
 	}
 }
 
+// TestAvatarRejectsExtensionContentMismatchBeforeBlobWrite kiểm chứng kịch bản AvatarRejectsExtensionContentMismatchBeforeBlobWrite.
 func TestAvatarRejectsExtensionContentMismatchBeforeBlobWrite(t *testing.T) {
 	db := openAccountIntegrationDB(t)
 	blobs := newFakeBlobStore()
@@ -240,6 +251,7 @@ func TestAvatarRejectsExtensionContentMismatchBeforeBlobWrite(t *testing.T) {
 	}
 }
 
+// avatarFixture tạo account và profile tối thiểu cho avatar integration test.
 func avatarFixture(db *sqlx.DB, blobs *fakeBlobStore) *accountapp.Avatar {
 	return accountapp.NewAvatar(
 		db,
@@ -250,6 +262,7 @@ func avatarFixture(db *sqlx.DB, blobs *fakeBlobStore) *accountapp.Avatar {
 	)
 }
 
+// pngBytes tạo ảnh PNG nhỏ hợp lệ dùng làm upload fixture.
 func pngBytes() []byte {
 	return append([]byte("\x89PNG\r\n\x1a\n"), make([]byte, 64)...)
 }

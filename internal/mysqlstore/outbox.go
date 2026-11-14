@@ -10,6 +10,9 @@ import (
 	"github.com/quocdev03/user-access-management/pkg/apperror"
 )
 
+// File này enqueue và claim durable outbox event trong MySQL.
+
+// OutboxEvent ánh xạ bản ghi sự kiện transactional outbox từ bảng outbox_events trong MySQL.
 type OutboxEvent struct {
 	ID             uint64    `db:"id"`
 	EventType      string    `db:"event_type"`
@@ -22,14 +25,17 @@ type OutboxEvent struct {
 	AvailableAt    time.Time `db:"available_at"`
 }
 
+// OutboxStore quản lý việc enqueue, claim có lock và cập nhật trạng thái các sự kiện outbox trong MySQL.
 type OutboxStore struct {
 	db *sqlx.DB
 }
 
+// NewOutboxStore khởi tạo OutboxStore với các dependency được cung cấp.
 func NewOutboxStore(db *sqlx.DB) *OutboxStore {
 	return &OutboxStore{db: db}
 }
 
+// Enqueue ghi durable side effect trong transaction của business mutation.
 func (s *OutboxStore) Enqueue(ctx context.Context, event *OutboxEvent) error {
 	if _, err := executor(ctx, s.db).ExecContext(ctx, `
 		INSERT INTO outbox_events (
@@ -50,6 +56,7 @@ func (s *OutboxStore) Enqueue(ctx context.Context, event *OutboxEvent) error {
 	return nil
 }
 
+// CancelPendingVerification hủy verification email chưa giao của user trong transaction.
 func (s *OutboxStore) CancelPendingVerification(
 	ctx context.Context,
 	userID uint64,
@@ -82,6 +89,7 @@ func (s *OutboxStore) CancelPendingVerification(
 	return nil
 }
 
+// CancelPendingPasswordReset hủy password-reset email chưa giao của user trong transaction.
 func (s *OutboxStore) CancelPendingPasswordReset(
 	ctx context.Context,
 	userID uint64,
@@ -112,6 +120,7 @@ func (s *OutboxStore) CancelPendingPasswordReset(
 	return nil
 }
 
+// CancelPendingEmailChange hủy email-change event chưa giao của user trong transaction.
 func (s *OutboxStore) CancelPendingEmailChange(
 	ctx context.Context,
 	userID uint64,
@@ -151,6 +160,7 @@ func (s *OutboxStore) CancelPendingEmailChange(
 	return nil
 }
 
+// ClaimAvailable khóa và claim batch event đến hạn cho một worker ID.
 func (s *OutboxStore) ClaimAvailable(
 	ctx context.Context,
 	workerID string,
@@ -215,6 +225,7 @@ func (s *OutboxStore) ClaimAvailable(
 	return events, nil
 }
 
+// MarkDelivered đánh dấu delivered tại MySQL adapter và giữ mapping persistence khỏi domain.
 func (s *OutboxStore) MarkDelivered(
 	ctx context.Context,
 	id uint64,
@@ -241,6 +252,7 @@ func (s *OutboxStore) MarkDelivered(
 	return requireOneRow(result, "mark outbox delivered")
 }
 
+// MarkFailed đánh dấu thất bại tại MySQL adapter và giữ mapping persistence khỏi domain.
 func (s *OutboxStore) MarkFailed(
 	ctx context.Context,
 	event OutboxEvent,
@@ -274,6 +286,7 @@ func (s *OutboxStore) MarkFailed(
 	return requireOneRow(result, "mark outbox failed")
 }
 
+// DeleteCompletedBatch xóa completed batch tại MySQL adapter và giữ mapping persistence khỏi domain.
 func (s *OutboxStore) DeleteCompletedBatch(
 	ctx context.Context,
 	before time.Time,
@@ -301,7 +314,9 @@ func (s *OutboxStore) DeleteCompletedBatch(
 	return rows, nil
 }
 
+// requireOneRow phát hiện concurrent ownership loss khi command không tác động đúng một row.
 func requireOneRow(result interface {
+	// RowsAffected trả số outbox row chịu tác động bởi command.
 	RowsAffected() (int64, error)
 }, operation string) error {
 	rows, err := result.RowsAffected()

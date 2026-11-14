@@ -9,6 +9,9 @@ import (
 	"github.com/pquerna/otp/totp"
 )
 
+// File này kiểm chứng hành vi mfa crypto và các trường hợp lỗi liên quan.
+
+// TestMFASecretCodecRoundTripRotationAndTamperDetection kiểm chứng kịch bản MFASecretCodecRoundTripRotationAndTamperDetection.
 func TestMFASecretCodecRoundTripRotationAndTamperDetection(t *testing.T) {
 	oldKey := bytes.Repeat([]byte{1}, 32)
 	newKey := bytes.Repeat([]byte{2}, 32)
@@ -45,6 +48,7 @@ func TestMFASecretCodecRoundTripRotationAndTamperDetection(t *testing.T) {
 	}
 }
 
+// TestValidateTOTPCodeAllowsOneStepAndReturnsMatchedStep kiểm chứng kịch bản ValidateTOTPCodeAllowsOneStepAndReturnsMatchedStep.
 func TestValidateTOTPCodeAllowsOneStepAndReturnsMatchedStep(t *testing.T) {
 	const secret = "JBSWY3DPEHPK3PXP"
 	now := time.Unix(1_710_000_000, 0).UTC()
@@ -84,6 +88,7 @@ func TestValidateTOTPCodeAllowsOneStepAndReturnsMatchedStep(t *testing.T) {
 	}
 }
 
+// TestRecoveryCodesAreRandomNormalizedAndHashable kiểm chứng kịch bản RecoveryCodesAreRandomNormalizedAndHashable.
 func TestRecoveryCodesAreRandomNormalizedAndHashable(t *testing.T) {
 	codes, hashes, err := generateRecoveryCodes(10)
 	if err != nil {

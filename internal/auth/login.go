@@ -7,7 +7,6 @@ import (
 	"time"
 
 	"github.com/jmoiron/sqlx"
-	accessapp "github.com/quocdev03/user-access-management/internal/access"
 	"github.com/quocdev03/user-access-management/internal/mysqlstore"
 	sessionapp "github.com/quocdev03/user-access-management/internal/session"
 	"github.com/quocdev03/user-access-management/pkg/apperror"
@@ -15,12 +14,16 @@ import (
 	"go.uber.org/zap"
 )
 
+// File này điều phối đăng nhập, khóa bản ghi và phát hành session nguyên tử.
+
+// LoginPolicy cấu hình giới hạn số lần đăng nhập sai, thời gian khóa tài khoản và chính sách token.
 type LoginPolicy struct {
 	TokenPolicy
 	MaxFailedAttempts int
 	LockDuration      time.Duration
 }
 
+// LoginCommand chứa thông tin xác thực đăng nhập bao gồm email, mật khẩu, IP và User-Agent.
 type LoginCommand struct {
 	Email     string
 	Password  string
@@ -28,6 +31,7 @@ type LoginCommand struct {
 	UserAgent string
 }
 
+// LoginResult chứa kết quả đăng nhập thành công gồm các token hoặc yêu cầu thử thách MFA.
 type LoginResult struct {
 	AccessToken  string
 	RefreshToken string
@@ -39,6 +43,7 @@ type LoginResult struct {
 	MFAChallenge string
 }
 
+// Login thực thi use case xác thực đăng nhập người dùng, kiểm tra khóa tài khoản và khởi tạo session.
 type Login struct {
 	accounts  *mysqlstore.AccountStore
 	profiles  *mysqlstore.ProfileStore
@@ -51,6 +56,7 @@ type Login struct {
 	logger    *zap.Logger
 }
 
+// NewLogin khởi tạo Login với các dependency được cung cấp.
 func NewLogin(
 	db *sqlx.DB,
 	accounts *mysqlstore.AccountStore,
@@ -75,6 +81,7 @@ func NewLogin(
 	}
 }
 
+// Authenticate xác thực credential theo thứ tự chống timing leak, khóa account trước mutation và phát hành session trong cùng transaction.
 func (l *Login) Authenticate(
 	ctx context.Context,
 	command LoginCommand,
@@ -238,8 +245,8 @@ func (l *Login) Authenticate(
 		if err != nil {
 			return err
 		}
-		if len(roles) == 0 {
-			roles = []string{accessapp.RoleUser}
+		if roles == nil {
+			roles = []string{}
 		}
 
 		accessToken, refreshToken, accessJTI, err := generateTokenPair(
@@ -314,6 +321,7 @@ func (l *Login) Authenticate(
 	return result, nil
 }
 
+// logAudit ghi kết quả đăng nhập theo best effort và cảnh báo khi audit store thất bại.
 func (l *Login) logAudit(
 	ctx context.Context,
 	userID uint64,

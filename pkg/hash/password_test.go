@@ -2,6 +2,9 @@ package hash
 
 import "testing"
 
+// File này kiểm chứng hành vi password và các trường hợp lỗi liên quan.
+
+// TestValidateNewPassword kiểm chứng kịch bản ValidateNewPassword.
 func TestValidateNewPassword(t *testing.T) {
 	tests := []struct {
 		name    string
@@ -23,6 +26,7 @@ func TestValidateNewPassword(t *testing.T) {
 	}
 }
 
+// TestHashOTPDeterministic kiểm chứng kịch bản HashOTPDeterministic dùng HMAC-SHA256.
 func TestHashOTPDeterministic(t *testing.T) {
 	a := HashOTP("123456", "pepper")
 	b := HashOTP("123456", "pepper")
@@ -35,8 +39,25 @@ func TestHashOTPDeterministic(t *testing.T) {
 	if len(a) != 64 {
 		t.Fatalf("expected sha256 hex length 64, got %d", len(a))
 	}
+
+	// Đảm bảo không phải là SHA256 thô nối chuỗi
+	rawConcat := SHA256("123456pepper")
+	if a == rawConcat {
+		t.Fatal("HashOTP must use HMAC-SHA256 instead of raw string concatenation")
+	}
+
+	differentPepper := HashOTP("123456", "different-pepper")
+	if a == differentPepper {
+		t.Fatal("different peppers must yield different hashes")
+	}
+
+	differentOTP := HashOTP("654321", "pepper")
+	if a == differentOTP {
+		t.Fatal("different OTPs must yield different hashes")
+	}
 }
 
+// TestDummyPasswordHashValid kiểm chứng kịch bản DummyPasswordHashValid.
 func TestDummyPasswordHashValid(t *testing.T) {
 	if !CheckPassword("dummy-password", DummyPasswordHash) {
 		t.Fatal("DummyPasswordHash must be a valid bcrypt of dummy-password")

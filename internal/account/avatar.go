@@ -1,3 +1,4 @@
+// Package account triển khai các use case hồ sơ, email và ảnh đại diện.
 package account
 
 import (
@@ -19,13 +20,17 @@ import (
 	"go.uber.org/zap"
 )
 
+// File này điều phối upload, thay thế và xóa ảnh đại diện ngoài MySQL transaction.
+
 const MaxAvatarBytes int64 = 2 << 20
 
+// AvatarMetadata chứa thông tin IP và User-Agent khi thực hiện thao tác với ảnh đại diện.
 type AvatarMetadata struct {
 	IPAddress string
 	UserAgent string
 }
 
+// Avatar điều phối các use case tải lên, cập nhật và xóa ảnh đại diện người dùng.
 type Avatar struct {
 	profiles  *mysqlstore.ProfileStore
 	audits    *mysqlstore.AuditStore
@@ -34,6 +39,7 @@ type Avatar struct {
 	logger    *zap.Logger
 }
 
+// NewAvatar khởi tạo Avatar với các dependency được cung cấp.
 func NewAvatar(
 	db *sqlx.DB,
 	profiles *mysqlstore.ProfileStore,
@@ -50,6 +56,7 @@ func NewAvatar(
 	}
 }
 
+// Upload kiểm tra ảnh, ghi blob mới rồi compare-and-swap profile reference trong transaction.
 func (a *Avatar) Upload(
 	ctx context.Context,
 	userID uint64,
@@ -123,6 +130,7 @@ func (a *Avatar) Upload(
 	return publicURL, nil
 }
 
+// Delete gỡ avatar khỏi hồ sơ trong transaction rồi xóa blob theo best effort.
 func (a *Avatar) Delete(
 	ctx context.Context,
 	userID uint64,
@@ -146,6 +154,7 @@ func (a *Avatar) Delete(
 	return nil
 }
 
+// audit ghi avatar mutation theo best effort và không làm hỏng kết quả chính.
 func (a *Avatar) audit(
 	ctx context.Context,
 	userID uint64,
@@ -167,6 +176,7 @@ func (a *Avatar) audit(
 	})
 }
 
+// deleteBestEffort xóa blob cũ và chỉ cảnh báo khi cleanup ngoài transaction thất bại.
 func (a *Avatar) deleteBestEffort(ctx context.Context, key, reason string) {
 	cleanupCtx, cancel := context.WithTimeout(context.WithoutCancel(ctx), 5*time.Second)
 	defer cancel()

@@ -1,3 +1,4 @@
+// Package main khởi động các worker nền cho outbox và dữ liệu hết hạn.
 package main
 
 import (
@@ -17,6 +18,9 @@ import (
 	"go.uber.org/zap"
 )
 
+// File này wire các worker cleanup, outbox và avatar migration với bounded lifecycle.
+
+// main khởi tạo các bounded worker và chờ shutdown signal để dừng có kiểm soát.
 func main() {
 	cfg, err := config.Load(".")
 	if err != nil {
@@ -29,12 +33,12 @@ func main() {
 	defer func() { _ = logr.Sync() }()
 	zap.ReplaceGlobals(logr)
 
-	db, err := database.ConnectMySQL(cfg.Database)
+	db, err := database.ConnectMySQL(cfg.Database.MySQLOptions())
 	if err != nil {
 		logr.Fatal("Failed to connect to MySQL", zap.Error(err))
 	}
 	defer db.Close()
-	redisClient, err := database.ConnectRedis(cfg.Redis)
+	redisClient, err := database.ConnectRedis(cfg.Redis.RedisOptions())
 	if err != nil {
 		logr.Fatal("Failed to connect to Redis", zap.Error(err))
 	}

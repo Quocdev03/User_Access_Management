@@ -1,5 +1,4 @@
-// Command bootstrap-admin creates the first administrator through an explicit
-// one-off operator action. It never accepts the password on the command line.
+// Package main cung cấp lệnh khởi tạo quản trị viên đầu tiên bằng thao tác vận hành tường minh.
 package main
 
 import (
@@ -21,11 +20,14 @@ import (
 	"github.com/quocdev03/user-access-management/pkg/hash"
 )
 
+// File này kiểm tra input vận hành và tạo quản trị viên đầu tiên trong transaction.
+
 const (
 	bootstrapPasswordEnv         = "UAM_BOOTSTRAP_ADMIN_PASSWORD"
 	knownBootstrapPasswordSHA256 = "ba8bcfb1dc44652223d3ed64fe68e18ba16ee7d43f1fda5668d0d03307e8b0fa"
 )
 
+// bootstrapInput chứa các trường dữ liệu đầu vào bắt buộc để khởi tạo tài khoản quản trị viên đầu tiên.
 type bootstrapInput struct {
 	Username    string `validate:"required,min=3,max=50"`
 	Email       string `validate:"required,email,max=255"`
@@ -35,6 +37,7 @@ type bootstrapInput struct {
 	DateOfBirth string `validate:"required,datetime=2006-01-02"`
 }
 
+// parseBootstrapInput đọc flag và password từ environment mà không đưa secret vào argv.
 func parseBootstrapInput(args []string, getenv func(string) string) (bootstrapInput, error) {
 	var input bootstrapInput
 
@@ -63,6 +66,7 @@ func parseBootstrapInput(args []string, getenv func(string) string) (bootstrapIn
 	return input, nil
 }
 
+// rejectKnownBootstrapPasswordHash chặn password trùng credential bootstrap từng bị phát hành.
 func rejectKnownBootstrapPasswordHash(passwordHash string) error {
 	if passwordHash == knownBootstrapPasswordSHA256 {
 		return errors.New("bootstrap password is a retired known credential")
@@ -70,6 +74,7 @@ func rejectKnownBootstrapPasswordHash(passwordHash string) error {
 	return nil
 }
 
+// validateBootstrapInput từ chối dữ liệu quản trị viên sai định dạng trước khi mở transaction.
 func validateBootstrapInput(input bootstrapInput) error {
 	if err := validator.New().Struct(input); err != nil {
 		return fmt.Errorf("validate bootstrap input: %w", err)
@@ -83,6 +88,7 @@ func validateBootstrapInput(input bootstrapInput) error {
 	return nil
 }
 
+// run thực thi bootstrap transaction và trả lỗi thay vì kết thúc process trực tiếp.
 func run(ctx context.Context, args []string, getenv func(string) string) error {
 	input, err := parseBootstrapInput(args, getenv)
 	if err != nil {
@@ -105,7 +111,7 @@ func run(ctx context.Context, args []string, getenv func(string) string) error {
 	if err != nil {
 		return fmt.Errorf("load config: %w", err)
 	}
-	db, err := database.ConnectMySQL(cfg.Database)
+	db, err := database.ConnectMySQL(cfg.Database.MySQLOptions())
 	if err != nil {
 		return fmt.Errorf("connect MySQL: %w", err)
 	}
@@ -138,6 +144,7 @@ func run(ctx context.Context, args []string, getenv func(string) string) error {
 	return nil
 }
 
+// main đọc input vận hành, tạo quản trị viên đầu tiên và không nhận mật khẩu qua command line.
 func main() {
 	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
 	defer cancel()

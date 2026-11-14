@@ -11,6 +11,9 @@ import (
 	"github.com/quocdev03/user-access-management/pkg/apperror"
 )
 
+// File này lưu TOTP secret, recovery code và MFA state trong MySQL.
+
+// TOTPRecord ánh xạ bản ghi cấu hình xác thực TOTP từ bảng user_totp trong MySQL.
 type TOTPRecord struct {
 	UserID           uint64     `db:"user_id"`
 	SecretCiphertext []byte     `db:"secret_ciphertext"`
@@ -22,14 +25,17 @@ type TOTPRecord struct {
 	UpdatedAt        time.Time  `db:"updated_at"`
 }
 
+// MFAStore quản lý việc lưu trữ, cập nhật bí mật TOTP và danh sách mã khôi phục trong MySQL.
 type MFAStore struct {
 	db *sqlx.DB
 }
 
+// NewMFAStore khởi tạo MFAStore với các dependency được cung cấp.
 func NewMFAStore(db *sqlx.DB) *MFAStore {
 	return &MFAStore{db: db}
 }
 
+// FindByUserID truy vấn theo người dùng ID tại MySQL adapter và giữ mapping persistence khỏi domain.
 func (s *MFAStore) FindByUserID(
 	ctx context.Context,
 	userID uint64,
@@ -37,6 +43,7 @@ func (s *MFAStore) FindByUserID(
 	return s.findByUserID(ctx, userID, false)
 }
 
+// FindByUserIDForUpdate truy vấn theo người dùng ID cho cập nhật và khóa bản ghi trong transaction hiện tại để tránh lost update.
 func (s *MFAStore) FindByUserIDForUpdate(
 	ctx context.Context,
 	userID uint64,
@@ -47,6 +54,7 @@ func (s *MFAStore) FindByUserIDForUpdate(
 	return s.findByUserID(ctx, userID, true)
 }
 
+// CreatePending tạo pending tại MySQL adapter và giữ mapping persistence khỏi domain.
 func (s *MFAStore) CreatePending(
 	ctx context.Context,
 	record *TOTPRecord,
@@ -68,6 +76,7 @@ func (s *MFAStore) CreatePending(
 	return nil
 }
 
+// ReplacePending thay thế pending tại MySQL adapter và giữ mapping persistence khỏi domain.
 func (s *MFAStore) ReplacePending(
 	ctx context.Context,
 	userID uint64,
@@ -99,6 +108,7 @@ func (s *MFAStore) ReplacePending(
 	)
 }
 
+// Enable chuyển pending TOTP factor sang enabled và lưu recovery-code hash.
 func (s *MFAStore) Enable(
 	ctx context.Context,
 	userID uint64,
@@ -124,6 +134,7 @@ func (s *MFAStore) Enable(
 	return requireMFARow(result, "enable TOTP MFA", apperror.ErrConflict)
 }
 
+// MarkTOTPUsed atomically từ chối TOTP timestep đã được consume trước đó.
 func (s *MFAStore) MarkTOTPUsed(
 	ctx context.Context,
 	userID uint64,
@@ -151,6 +162,7 @@ func (s *MFAStore) MarkTOTPUsed(
 	return rows == 1, nil
 }
 
+// Delete xóa TOTP secret và recovery codes khi MFA bị tắt.
 func (s *MFAStore) Delete(ctx context.Context, userID uint64) error {
 	result, err := executor(ctx, s.db).ExecContext(
 		ctx,
@@ -163,6 +175,7 @@ func (s *MFAStore) Delete(ctx context.Context, userID uint64) error {
 	return requireMFARow(result, "delete TOTP MFA", apperror.ErrNotFound)
 }
 
+// ReplaceRecoveryCodes thay thế khôi phục mã tại MySQL adapter và giữ mapping persistence khỏi domain.
 func (s *MFAStore) ReplaceRecoveryCodes(
 	ctx context.Context,
 	userID uint64,
@@ -191,6 +204,7 @@ func (s *MFAStore) ReplaceRecoveryCodes(
 	return nil
 }
 
+// ConsumeRecoveryCode consume khôi phục mã tại MySQL adapter và giữ mapping persistence khỏi domain.
 func (s *MFAStore) ConsumeRecoveryCode(
 	ctx context.Context,
 	userID uint64,
@@ -215,6 +229,7 @@ func (s *MFAStore) ConsumeRecoveryCode(
 	return rows == 1, nil
 }
 
+// CountUnusedRecoveryCodes đếm unused khôi phục mã tại MySQL adapter và giữ mapping persistence khỏi domain.
 func (s *MFAStore) CountUnusedRecoveryCodes(
 	ctx context.Context,
 	userID uint64,
@@ -231,6 +246,7 @@ func (s *MFAStore) CountUnusedRecoveryCodes(
 	return count, nil
 }
 
+// findByUserID truy vấn theo người dùng ID tại MySQL adapter và giữ mapping persistence khỏi domain.
 func (s *MFAStore) findByUserID(
 	ctx context.Context,
 	userID uint64,
@@ -255,8 +271,10 @@ func (s *MFAStore) findByUserID(
 	return &record, nil
 }
 
+// requireMFARow trả MFA row đã khóa hoặc business error khi factor chưa tồn tại.
 func requireMFARow(
 	result interface {
+		// RowsAffected trả số row chịu tác động bởi command MFA.
 		RowsAffected() (int64, error)
 	},
 	operation string,

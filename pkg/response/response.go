@@ -1,3 +1,4 @@
+// Package response ánh xạ kết quả HTTP sang response envelope ổn định.
 package response
 
 import (
@@ -8,6 +9,9 @@ import (
 	"github.com/quocdev03/user-access-management/pkg/apperror"
 )
 
+// File này tạo response envelope và kiểm soát mức chi tiết lỗi được trả ra.
+
+// Response định nghĩa cấu trúc envelope JSON chuẩn mực cho toàn bộ phản hồi API của hệ thống.
 type Response struct {
 	Data    interface{} `json:"data,omitempty"`
 	Meta    interface{} `json:"meta,omitempty"`
@@ -16,6 +20,7 @@ type Response struct {
 	Success bool        `json:"success"`
 }
 
+// Success ghi response envelope thành công với HTTP status và payload đã cho.
 func Success(c *gin.Context, statusCode int, message string, data interface{}) {
 	c.JSON(statusCode, Response{
 		Success: true,
@@ -24,6 +29,7 @@ func Success(c *gin.Context, statusCode int, message string, data interface{}) {
 	})
 }
 
+// SuccessWithMeta bổ sung metadata phân trang vào response thành công.
 func SuccessWithMeta(c *gin.Context, statusCode int, message string, data interface{}, meta interface{}) {
 	c.JSON(statusCode, Response{
 		Success: true,
@@ -33,6 +39,7 @@ func SuccessWithMeta(c *gin.Context, statusCode int, message string, data interf
 	})
 }
 
+// Error ánh xạ business hoặc system error sang public HTTP response an toàn.
 func Error(c *gin.Context, err error) {
 	var appErr *apperror.AppError
 	if errors.As(err, &appErr) {
@@ -55,7 +62,7 @@ func Error(c *gin.Context, err error) {
 		"code":    "INTERNAL_ERROR",
 		"message": "Đã xảy ra lỗi hệ thống",
 	}
-	// Chỉ lộ chi tiết nội bộ ngoài production (tránh leak SQL/path).
+	// Chỉ trả chi tiết lỗi ngoài production để tránh lộ SQL hoặc filesystem path.
 	if gin.Mode() != gin.ReleaseMode {
 		errBody["details"] = err.Error()
 	}
@@ -65,6 +72,7 @@ func Error(c *gin.Context, err error) {
 	})
 }
 
+// ValidationError trả lỗi input theo response envelope thống nhất.
 func ValidationError(c *gin.Context, err error) {
 	c.JSON(http.StatusBadRequest, Response{
 		Success: false,

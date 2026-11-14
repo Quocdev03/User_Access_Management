@@ -1,3 +1,4 @@
+// Package jobs chạy outbox delivery, cleanup và các tác vụ bảo trì có lease.
 package jobs
 
 import (
@@ -15,11 +16,15 @@ import (
 	"go.uber.org/zap"
 )
 
+// File này di chuyển blob avatar theo batch dưới distributed lease.
+
+// AvatarMigrationResult chứa kết quả số lượng ảnh đại diện đã được copy và bỏ qua trong quá trình di chuyển.
 type AvatarMigrationResult struct {
 	Copied  int
 	Skipped int
 }
 
+// AvatarMigrator thực hiện việc di chuyển dữ liệu ảnh đại diện từ local filesystem sang object store S3.
 type AvatarMigrator struct {
 	profiles *mysqlstore.ProfileStore
 	tx       *mysqlstore.TxManager
@@ -28,6 +33,7 @@ type AvatarMigrator struct {
 	logger   *zap.Logger
 }
 
+// NewAvatarMigrator khởi tạo AvatarMigrator với các dependency được cung cấp.
 func NewAvatarMigrator(
 	db *sqlx.DB,
 	source *blob.LocalStore,
@@ -43,6 +49,7 @@ func NewAvatarMigrator(
 	}
 }
 
+// Run di chuyển avatar theo batch dưới distributed lease và trả báo cáo tổng hợp.
 func (m *AvatarMigrator) Run(
 	ctx context.Context,
 	batchSize int,
@@ -87,6 +94,7 @@ func (m *AvatarMigrator) Run(
 	}
 }
 
+// copyOne đọc local blob, ghi object mới và xác minh checksum trước khi commit reference.
 func (m *AvatarMigrator) copyOne(
 	ctx context.Context,
 	candidate mysqlstore.AvatarMigrationCandidate,
@@ -129,11 +137,13 @@ func (m *AvatarMigrator) copyOne(
 		)
 	})
 	if err != nil {
+		m.deleteCopied(ctx, key)
 		return err
 	}
 	return nil
 }
 
+// deleteCopied dọn object vừa copy khi database compare-and-swap không thành công.
 func (m *AvatarMigrator) deleteCopied(ctx context.Context, key string) {
 	deleteCtx, cancel := context.WithTimeout(
 		context.WithoutCancel(ctx),
