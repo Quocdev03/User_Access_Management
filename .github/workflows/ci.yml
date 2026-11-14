@@ -15,11 +15,11 @@ concurrency:
 
 jobs:
   quality:
-    name: Quality
+    name: Code Quality & Security Scan
     runs-on: ubuntu-latest
     timeout-minutes: 20
     steps:
-      - name: Checkout
+      - name: Checkout repository
         uses: actions/checkout@v4
 
       - name: Set up Go
@@ -37,12 +37,12 @@ jobs:
         run: |
           unformatted="$(gofmt -l .)"
           if [ -n "$unformatted" ]; then
-            printf '%s\n' "$unformatted"
+            printf 'Files requiring gofmt:\n%s\n' "$unformatted"
             exit 1
           fi
           git diff --check
 
-      - name: Vet
+      - name: Go Vet
         run: go vet ./...
 
       - name: Staticcheck
@@ -50,18 +50,34 @@ jobs:
           go install honnef.co/go/tools/cmd/staticcheck@v0.7.0
           staticcheck ./...
 
-      - name: Unit and contract tests
-        run: go test -count=1 ./...
+      - name: Govulncheck (Vulnerability Analysis)
+        run: |
+          go install golang.org/x/vuln/cmd/govulncheck@latest
+          govulncheck ./...
 
-      - name: Build all commands
+      - name: Run unit & contract tests with coverage
+        run: |
+          go test -v -coverprofile=coverage.out -covermode=atomic ./...
+
+      - name: Check OpenAPI generation sync
+        run: |
+          go install github.com/swaggo/swag/cmd/swag@v1.16.6
+          swag init -g cmd/server/main.go -o docs/openapi --parseDependency --parseInternal
+          if [ -n "$(git status --porcelain docs/openapi)" ]; then
+            echo "::error::OpenAPI documentation is out of sync. Please run 'swag init' and commit changes."
+            git diff docs/openapi
+            exit 1
+          fi
+
+      - name: Build all binaries
         run: go build ./...
 
   race:
-    name: Race detector
+    name: Race Detector
     runs-on: ubuntu-latest
     timeout-minutes: 20
     steps:
-      - name: Checkout
+      - name: Checkout repository
         uses: actions/checkout@v4
 
       - name: Set up Go
@@ -73,8 +89,44 @@ jobs:
       - name: Run race detector
         run: go test -race -count=1 ./...
 
+  cross-compile:
+    name: Cross-Platform Build Check
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    strategy:
+      matrix:
+        target:
+          - { os: linux, arch: amd64 }
+          - { os: linux, arch: arm64 }
+          - { os: windows, arch: amd64 }
+          - { os: darwin, arch: arm64 }
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set up Go
+        uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+          cache: true
+
+      - name: Compile all binaries for ${{ matrix.target.os }}/${{ matrix.target.arch }}
+        env:
+          GOOS: ${{ matrix.target.os }}
+          GOARCH: ${{ matrix.target.arch }}
+          CGO_ENABLED: 0
+        run: |
+          mkdir -p dist
+          for cmd in server worker migrate avatar-migrate bootstrap-admin; do
+            ext=""
+            if [ "${{ matrix.target.os }}" = "windows" ]; then
+              ext=".exe"
+            fi
+            go build -trimpath -ldflags="-s -w" -o dist/${cmd}${ext} ./cmd/${cmd}
+          done
+
   integration:
-    name: MySQL and Redis integration
+    name: MySQL & Redis Integration Tests
     runs-on: ubuntu-latest
     timeout-minutes: 30
     services:
@@ -148,7 +200,7 @@ jobs:
       UAM_STORE_TEST_DB_PASSWORD: uam_test_password
       UAM_REDIS_TEST_ADDR: 127.0.0.1:6379
     steps:
-      - name: Checkout
+      - name: Checkout repository
         uses: actions/checkout@v4
 
       - name: Set up Go
@@ -241,18 +293,27 @@ jobs:
           ./internal/redisstore
 
   image:
-    name: Container build and scan
-    needs: [quality, race, integration]
+    name: Container Build & Trivy Vulnerability Scan
+    needs: [quality, race, cross-compile, integration]
     runs-on: ubuntu-latest
     timeout-minutes: 20
     steps:
-      - name: Checkout
+      - name: Checkout repository
         uses: actions/checkout@v4
 
-      - name: Build image
-        run: docker build --tag uam:${{ github.sha }} .
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
 
-      - name: Scan image
+      - name: Build image
+        uses: docker/build-push-action@v5
+        with:
+          context: .
+          load: true
+          tags: uam:${{ github.sha }}
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+
+      - name: Scan image with Trivy
         uses: aquasecurity/trivy-action@ed142fd0673e97e23eac54620cfb913e5ce36c25 # v0.36.0
         with:
           image-ref: uam:${{ github.sha }}
