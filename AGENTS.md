@@ -1,126 +1,101 @@
-# AI Project Instructions (Optimized)
+# UAM — Hướng dẫn Kỹ thuật & Quy chuẩn Phát triển (AI Guidelines)
 
-> **MỤC TIÊU**: Xây dựng UAM theo domain-first modular monolith, giữ public HTTP contract và dữ liệu production, đồng thời bảo đảm Concurrency, Security, khả năng scale và xóa sạch legacy sau cutover.
+> **MỤC TIÊU DỰ ÁN**: Hệ thống User Access Management (UAM) được xây dựng theo kiến trúc **Domain-first Modular Monolith**. Đảm bảo tính toàn vẹn dữ liệu, Concurrency-safe, Fail-closed Security, khả năng scale và giữ vững 41 public API contract.
 
-## 1. KHỞI TẠO & ĐỌC CONTEXT (BẮT BUỘC)
+---
 
-- **Đọc Skills (Bước 0)**: Đọc danh sách các `SKILL.md` trước. Chỉ dùng tool `view_file` đọc nội dung các skill thực sự liên quan đến task hiện tại. Chỉ đọc toàn bộ skills khi user yêu cầu audit hoặc thay đổi ảnh hưởng toàn project.
-- **Đọc Docs (theo task)**:
-    - Đọc `docs/README.md` để tìm source of truth theo concern:
-        - `docs/architecture/`: module, dependency, runtime topology.
-        - `docs/domain/`: state invariant và business policy.
-        - `docs/data/`: current schema, schema design, Redis keys, migration.
-        - `docs/use-cases/`: semantic use-case graph và public behavior.
-        - `docs/operations/`: config, local, deployment, observability.
-        - `docs/decisions/`: quyết định kiến trúc còn hiệu lực.
-    - Swagger generated ở `docs/openapi/`. **Không sửa tay**, regenerate bằng `swag`.
-    - Quy tắc code/AI workflow: file này (`AGENTS.md`).
+## 1. KHỞI TẠO & ĐỌC CONTEXT
 
-## 2. QUY TRÌNH IMPLEMENT (WORKFLOW)
+- **Nguồn chân lý tài liệu (Source of Truth theo concern)**:
+  - `docs/architecture/`: Ranh giới module, topology runtime, dependency graph.
+  - `docs/domain/`: State invariants, lifecycle tài khoản (`account-state.md`), session rules (`session.md`), RBAC (`access-control.md`).
+  - `docs/data/`: Schema vật lý 16 bảng (`current-schema.md`), lý do thiết kế (`schema-design.md`), quy ước key Redis (`redis-keys.md`).
+  - `docs/use-cases/`: Danh mục 41 semantic use case graph và contract hành vi public.
+  - `docs/operations/`: Cấu hình môi trường (`configuration.md`), deployment, observability.
+  - `docs/openapi/`: Tài liệu Swagger UI. **Không sửa tay**, tự động regenerate bằng lệnh `swag init`.
+- **Ranh giới thư mục mã nguồn**:
+  - `cmd/`: 5 entrypoint nhị phân độc lập (`server`, `worker`, `migrate`, `avatar-migrate`, `bootstrap-admin`). Chỉ wire dependency và quản lý lifecycle; không chứa business logic.
+  - `internal/`: Chứa các domain module độc lập (`auth`, `account`, `accountstate`, `access`, `session`) và các adapter hạ tầng (`httpapi`, `mysqlstore`, `redisstore`, `mail`, `blob`, `jobs`).
+  - `pkg/`: Thư viện tiện ích dùng chung (`apperror`, `database`, `hash`, `jwt`, `logger`, `response`, `validator`). Tuyệt đối không import ngược vào `internal/`.
 
-1. **Lên Plan**: Nếu task > 1 file hoặc tính năng mới, tạo outline ngắn (semantic Use Case, file cần sửa/xóa, migration, code tái sử dụng) và đợi user duyệt. Task nhỏ/fix bug thì làm luôn.
-2. **Scan Codebase**: Trước khi tạo hoặc xóa file, ưu tiên search/symbol tool của IDE; dùng `rg` khi không có tool phù hợp:
-    - HTTP owner: `internal/httpapi/`; các package HTTP global cũ đã bị xóa và không được tái tạo.
-    - Domain owners: `internal/auth/`, `account/`, `session/`, `access/`, `accountstate/`.
-    - Adapters: `internal/mysqlstore/`, `redisstore/`, `mail/`, `blob/`, `jobs/`.
-    - Các package global đã xóa (`handler`, `router`, `middleware`, `dto`, `service`, `repository`, `worker`, `model`, `constant`) không được tái tạo.
-    - Tìm theo semantic use-case ID, route, symbol, table/column, Redis key, env key, test và docs reference.
-    - Trước khi xóa, BẮT BUỘC quét toàn repo và lập replacement ledger; không chỉ kiểm tra import Go.
-3. **Verification**:
-    - Sau khi thay đổi Go source (\*.go), chạy `cmd /c "go build ./..."`. Nếu chỉ sửa docs, config, comment thì không cần build.
-    - Nếu có unit test cho phần bị sửa, hãy chạy các test liên quan. Không chạy toàn bộ test suite nếu chỉ thay đổi nhỏ, trừ khi được yêu cầu.
-    - Với architecture phase/vertical slice: chạy full `go test ./...`, `go vet ./...`, `staticcheck ./...`, `go mod verify`, `gofmt -l .`, `git diff --check`; concurrency-sensitive code phải có race/integration test phù hợp.
-    - Migration phase phải test empty-up và current-data → expand → backfill → cutover → contract trên disposable DB.
-    - **Rollback/Fix**: Nếu build hoặc test fail, tự phân tích và fix. Nếu lỗi phức tạp vượt quá phạm vi task, báo lại cho user và xin ý kiến, KHÔNG tự ý sửa lan man.
-4. **Cập nhật Docs**:
-    - Use case dùng semantic ID (`AUTH-LOGIN`, `ACCOUNT-EMAIL-CHANGE-VERIFY`, v.v.), không tạo UC số mới.
-    - Cập nhật đúng source theo concern; không copy cùng một invariant vào nhiều file.
-    - BẮT BUỘC cập nhật `PROGRESS.md` khi:
-    - Hoàn thành một Feature, Use Case mới.
-    - Có thay đổi lớn về API, Database, Architecture.
-    - Cập nhật tài liệu quy mô lớn, mang tính toàn cục (VD: Tích hợp Swagger, bổ sung comment/docs cho toàn bộ module).
-    *Không cập nhật* nếu chỉ là refactor code nhỏ lẻ, fix bug lặt vặt, sửa lỗi typo hoặc format code thông thường.
+---
 
-## 3. QUY TẮC KIẾN TRÚC & CODE
+## 2. QUY TRÌNH PHÁT TRIỂN & SỬA ĐỔI (WORKFLOW)
 
-- **Kiến trúc đích**: `HTTP adapter → domain application use case → domain policy / infrastructure adapter`.
-    - Không bắt buộc tạo `Service` hoặc `Repository` type.
-    - Package tổ chức theo domain (`auth`, `account`, `session`, `access`), không theo ba layer toàn cục.
-    - `httpapi` không chứa business transition; domain không import `httpapi`; store không gọi chéo MySQL/Redis.
-    - Transaction thuộc use case. `cmd/*` chỉ wire dependency và lifecycle.
-- **Compatibility boundary**:
-    - Giữ public route, request/response shape và dữ liệu production.
-    - Internal package/API và schema được phép breaking trong vertical slice đã duyệt.
-    - Applied migration là bất biến; thay schema bằng migration mới.
-- **Comment**: Khi sửa/xóa code, BẮT BUỘC cập nhật hoặc xóa comment cũ liên quan để tránh gây hiểu lầm.
-- **Error Handling**:
-    - _Lỗi Business_: Dùng `apperror` (VD: `return apperror.ErrNotFound`). Tuyệt đối KHÔNG `fmt.Errorf`.
-    - _Lỗi System_: Dùng `fmt.Errorf("...: %w", err)` để bọc lỗi từ tầng dưới.
-    - _Ignore Error_: Không bỏ qua lỗi security. Thao tác best-effort thì phải log (`logger.Warn`).
-- **Thứ tự Validation & Anti-Spam**:
-    1. Format Check (len, regex) -> 2. Rate Limit -> 3. AuthZ (Kiểm tra quyền) -> 4. DB Read -> 5. Bcrypt/Crypto -> 6. DB Write/Tx.
-       _(Dùng Token Bucket. Chỉ tính rate limit/failed attempt nếu format hợp lệ)._
-- **Security**: Mọi Middleware bảo mật (Auth, Rate limit) phải Fail-Closed (trả về 503 nếu service phụ trợ như Redis sập).
-- **State đồng bộ (account/session)** — BẮT BUỘC khi đụng user/auth:
-    - Source duy nhất của state policy: `internal/accountstate/` + `docs/domain/account-state.md`. Không tái tạo state/profile mirror đã bị contract migration loại bỏ.
-    - Không ghi raw lifecycle/admin-lock/login-lock/password-required field ngoài `accountstate` transition.
-    - Đổi password/email/role/account state/MFA → tăng `auth_version` và xóa sessions trong cùng MySQL transaction.
-    - Global revoke không phụ thuộc Redis. Logout/revoke một session vẫn blacklist JTI fail-closed.
-    - Redis chỉ giữ TTL state: rate/ban/JTI/refresh-reuse/MFA/worker lease; không thêm global revoke hoặc email-change business state mới.
-    - Không thêm `safeGo`/`go` trần cho mail. Mail bắt buộc đi qua durable outbox + bounded worker.
-    - UC mới/cập nhật phải ghi dependency, transaction, state/session effect, concurrency và failure behavior trong `docs/use-cases/`.
+1. **Lập Kế hoạch (Plan)**: Với tính năng mới hoặc task sửa đổi > 1 file, tạo outline ngắn (Use Case semantic ID, file sửa/thêm, migration nếu có) và xác nhận trước khi làm. Bug fix nhỏ có thể triển khai trực tiếp.
+2. **Khảo sát Codebase (Targeted Scope)**:
+   - Sử dụng tool search (`git grep`, symbol search) theo semantic ID (`AUTH-LOGIN`, `ACCOUNT-PROFILE-UPDATE`...), route hoặc table.
+   - Chỉ sửa đổi chính xác các dòng/file thuộc phạm vi task. Tuyệt đối không "tiện tay" refactor, đổi tên, format lại code không liên quan (No opportunistic refactoring).
+3. **Quy trình Kiểm thử & Nghiệm thu (Verification)**:
+   - Khi sửa file Go: Chạy `cmd /c "go build ./..."` để kiểm tra compile.
+   - Chạy unit test của package bị ảnh hưởng: `go test -v ./internal/<package>`.
+   - Chạy kiểm tra định dạng và phân tích tĩnh: `gofmt -l .` và `go vet ./...`.
+   - Với thay đổi liên quan đến API public: Bắt buộc chạy `go test -v ./internal/contract` (đảm bảo 41/41 contract test pass).
+4. **Cập nhật Tài liệu**:
+   - Khi hoàn thành Feature mới, thay đổi API, Database hoặc cấu trúc: BẮT BUỘC cập nhật `PROGRESS.md` và tài liệu concern tương ứng trong `docs/`.
 
-## 4. DATABASE & TRANSACTION
+---
 
-- **Database Migration**:
-    - Không tạo migration ngoài task/phase đã được duyệt.
-    - Không sửa migration đã deploy. Production dùng forward-only expand → migrate/backfill → cutover → contract.
-    - Tách DDL khỏi data backfill; không thêm `NOT NULL`/unique trước khi dữ liệu đã sạch.
-    - Không drop cột/table/index trước khi code cũ rời mọi replica và reference sweep sạch.
-    - Dữ liệu production phải được preserve, backfill và kiểm tra consistency trước contract.
-- **Chống Lost Update**: BẮT BUỘC dùng `FOR UPDATE` (VD: `FindByIDForUpdate(txCtx)`) khi load record để sửa. HOẶC dùng Atomic Update query trực tiếp nếu chỉ đổi trạng thái đơn giản.
-- **Transaction owner**: Mọi thao tác nhiều bước thuộc một application use case và nằm trong `TxManager.RunInTx(ctx, func(txCtx) {...})`; không phụ thuộc tên receiver/type cụ thể.
-- **Scope Context**:
-    - Truyền `txCtx` vào mọi MySQL store call bên trong transaction.
-    - KHÔNG gọi MySQL store bằng `ctx` gốc khi đang ở trong `RunInTx`.
-    - Redis call đặt ngoài MySQL transaction. KHÔNG lồng các `RunInTx` chồng chéo.
-    - Mail/blob/network call đặt ngoài transaction; durable side effect phải ghi outbox trong transaction.
+## 3. QUY TẮC KIẾN TRÚC & CODE CHUẨN MỰC
 
-## 5. HÀNH VI CỦA AI (TỐI ƯU OUTPUT)
+- **Luồng phụ thuộc một chiều (Clean Boundary)**:
+  $$\text{HTTP Endpoint (httpapi)} \longrightarrow \text{Domain Application Use Case} \longrightarrow \text{Domain Policy / Infrastructure Store}$$
+  - `httpapi` chỉ validate input và serialize output; không chứa logic chuyển đổi nghiệp vụ (state transitions).
+  - Domain không import `httpapi`.
+  - Store adapters không gọi chéo giữa MySQL và Redis.
+- **Quản lý Lỗi (Error Handling)**:
+  - *Lỗi Nghiệp vụ (Business)*: Dùng `apperror` (ví dụ: `return apperror.ErrNotFound`, `apperror.ErrConflict`). Tuyệt đối không dùng `fmt.Errorf`.
+  - *Lỗi Hệ thống (System/Infra)*: Dùng `fmt.Errorf("mô tả context: %w", err)` để bọc lỗi từ tầng dưới.
+  - *Lỗi Bảo mật*: Tuyệt đối không bỏ qua lỗi. Thao tác best-effort không quan trọng bắt buộc phải ghi log (`logger.Warn`).
+- **Thứ tự Middleware & Chống DoS (Bắt buộc)**:
+  1. `Format / Length Check` (JSON Validator)
+  2. `Rate Limit` (Token Bucket Redis)
+  3. `Auth & AuthZ` (JWT verify, Permission check)
+  4. `DB Read / Lock`
+  5. `Crypto / Hash` (Bcrypt, HMAC)
+  6. `DB Write / Commit Tx`
+  *(Chỉ tính quota rate limit / failed attempt khi format request hợp lệ).*
+- **Quy chuẩn Comment Mã nguồn**:
+  - Đầu mỗi file Go: Comment tiếng Việt ngắn nêu rõ file chịu trách nhiệm gì.
+  - Trước mỗi named function/method/interface method: Go doc tiếng Việt bắt đầu bằng đúng tên symbol (`// <SymbolName> ...`).
+  - Inline comment: Chỉ dùng để giải thích lý do khó thấy (security, concurrency, transaction, fail-closed). Không viết comment chỉ kể lại cú pháp câu lệnh kế tiếp.
 
-- **Sử dụng Tool**: Ưu tiên tool chuyên biệt (`grep_search`, `list_dir`, `view_file`). Không lạm dụng lệnh bash (`grep`, `cat`, `ls`) khi đã có tool. Không dùng terminal để đọc file nếu IDE đã có file viewer/search tool. Dùng terminal chủ yếu cho build, test và git.
-- **Sửa Code (Targeted Edits & Scope Control)**:
-    - **Scope Control**: Chỉ sửa những file bắt buộc cho task. Tuyệt đối không "tiện tay" refactor, rename, move, reformat hoặc đụng chạm tới file/code không liên quan (No opportunistic refactoring).
-    - Với vertical refactor đã duyệt, được move/tách/xóa file trong đúng slice; phải xóa legacy counterpart thay vì giữ cả hai.
-    - Không tạo file mới chỉ để bọc/forward sang implementation cũ. Tạo package/file mới khi nó là owner rõ ràng của domain/use case.
-    - Chỉ thay đổi chính xác đoạn code cần thiết. TUYỆT ĐỐI KHÔNG rewrite toàn bộ file nếu chỉ sửa 1 đoạn nhỏ.
-    - Giữ nguyên định dạng: Không thay đổi formatting của phần code không đụng tới. Không reorder imports trừ khi bắt buộc.
-    - Sau cutover, quét và xóa import, DI wiring, symbol, config/env, Redis key, test, comment và docs legacy trong cùng phase.
-    - Không giữ Markdown cũ dưới dạng redirect stub, `archive/`, `legacy/` hoặc `.bak.md`; sau reconciliation và reference sweep phải xóa file.
-- **Chống Truncate**: Output phải đầy đủ 100%. KHÔNG để lại `...` hoặc `// rest of code`. Code dài phải ghi thẳng vào file, không paste toàn bộ lên chat.
-- **Giao tiếp**: Nói ngắn gọn. Không giải thích code hiển nhiên. Với quyết định kỹ thuật quan trọng, thêm comment ngắn vào code. Khi không chắc chắn về nghiệp vụ/cấu trúc, BẮT BUỘC hỏi lại user trước khi tự quyết định.
+---
 
-## 6. SIMPLICITY FIRST (TRÁNH OVER-ENGINEERING)
+## 4. QUẢN LÝ DATABASE, TRANSACTION & CONCURRENCY
 
-- **Consistency First**: Nhất quán với thiết kế đích đã duyệt. Legacy đã được đánh dấu thay thế không phải precedent để copy.
-- **Prefer the simplest implementation**: Luôn ưu tiên giải pháp code đơn giản, trực quan nhất.
-- **No premature abstraction**: Không tạo Interface/Abstraction cho từng use case. Interface chỉ dùng ở boundary có nhiều implementation hoặc giá trị runtime/test thực tế (chủ yếu mail/blob).
-- **No one-time helpers**: Không tạo Helper function nếu nó chỉ được dùng đúng 1 lần (hãy viết thẳng logic inline).
-- **Keep files grouped**: Không tách logic lắt nhắt ra nhiều file nhỏ trừ khi nó thực sự cải thiện khả năng bảo trì.
-- **Avoid premature optimization**: Tránh tối ưu hóa hiệu suất quá sớm khi chưa có bottleneck thực tế.
-- **Minimize changes**: Giữ scope nhỏ theo vertical slice, nhưng không giảm diff bằng cách bỏ lại production path cũ.
-- **Reuse first**: BẮT BUỘC tìm và tái sử dụng code/utils/struct hiện có trước khi định tự viết mới.
-- **No new dependencies**: Không thêm dependency/package mới nếu thư viện hiện có đã giải quyết được.
+- **Chủ sở hữu Transaction**:
+  - Mọi thao tác ghi nhiều bước phải nằm trong `TxManager.RunInTx(ctx, func(txCtx context.Context) error { ... })`.
+  - Bắt buộc truyền `txCtx` vào tất cả các lời gọi MySQL store bên trong transaction. Tuyệt đối không dùng `ctx` gốc trong transaction.
+  - Không gọi Redis, Mail, S3 hoặc network I/O bên trong MySQL transaction. Thao tác bất đồng bộ phải ghi outbox event vào MySQL trong transaction.
+- **Chống Lost Update**:
+  - Bắt buộc dùng `FOR UPDATE` (ví dụ: `FindByIDForUpdate(txCtx)`) khi đọc record để cập nhật, hoặc dùng Atomic Update SQL trực tiếp.
+- **Database Migrations**:
+  - Migration là bất biến (Forward-only). Tuyệt đối không sửa file migration đã áp dụng.
+  - Tách bạch DDL thay đổi cấu trúc bảng khỏi data backfill.
 
-## 7. REPLACEMENT DEFINITION OF DONE
+---
 
-Một vertical slice chỉ hoàn thành khi:
+## 5. BẢO MẬT & ĐỒNG BỘ TRẠNG THÁI (FAIL-CLOSED)
 
-1. Public contract test pass và route có đúng một semantic use-case owner.
-2. Handler đã chuyển trực tiếp sang implementation mới; không façade giữ service cũ.
-3. State/schema read-write path dùng source mới; dual-write chỉ tồn tại trong migration window được ghi rõ.
-4. Replacement ledger không còn production symbol, import, DI wiring, Redis key, config/env, comment, docs hoặc test legacy không có owner.
-5. Applied migration không bị sửa; backfill/consistency check pass trước contract migration.
-6. Build/test/vet/staticcheck/format/diff-check và test concurrency/failure liên quan đều pass.
-7. Docs theo concern, route mapping và `PROGRESS.md` được cập nhật đúng mức thay đổi.
-8. Legacy Markdown thuộc deletion manifest đã bị xóa; `rg` không còn path cũ và docs inventory chỉ chứa allowlist mới.
+- **Nguyên tắc Fail-Closed**:
+  - Mọi middleware bảo mật (Auth, Rate limit) phải trả về `503 Service Unavailable` nếu service phụ trợ (Redis, MySQL) gặp sự cố.
+- **State Policy Duy nhất**:
+  - Nguồn chân lý duy nhất cho vòng đời tài khoản là `internal/accountstate/` và `docs/domain/account-state.md`.
+  - Không cập nhật trực tiếp các trường lifecycle/lock/password ngoài state machine của `accountstate`.
+  - Khi đổi mật khẩu, đổi email, đổi role, thay đổi trạng thái tài khoản hoặc cấu hình MFA: Bắt buộc tăng `auth_version` và thu hồi sessions trong cùng MySQL transaction.
+- **Thu hồi Phiên (Session Revocation)**:
+  - Thu hồi toàn bộ (Global Revocation) dựa trên `auth_version` bền vững trong MySQL, không phụ thuộc hoàn toàn vào Redis.
+  - Thu hồi phiên cụ thể (Single Revoke): Đánh dấu `revoked_at` trong MySQL và blacklist Access JTI vào Redis với TTL tương ứng.
+
+---
+
+## 6. DEFINITION OF DONE (TIÊU CHÍ HOÀN THÀNH)
+
+Một task/feature chỉ được coi là hoàn tất khi:
+1. `cmd /c "go build ./..."` biên dịch thành công 100%.
+2. `go test -short ./...` và `go test -v ./internal/contract` (41 API contracts) đều pass.
+3. `go vet ./...` và `gofmt -l .` không có cảnh báo hay lỗi format.
+4. Đầy đủ Go doc tiếng Việt cho các symbol mới hoặc sửa đổi.
+5. Không tạo code duplicate, không bọc wrapper thừa thãi.
+6. Cập nhật `PROGRESS.md` và tài liệu liên quan trong `docs/`.
