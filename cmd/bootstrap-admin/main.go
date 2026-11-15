@@ -30,7 +30,7 @@ const (
 
 	// retiredBootstrapCredentialHash là bcrypt hash của credential bootstrap mặc định cũ nhằm từ chối tái sử dụng.
 	//nolint:gosec // #nosec G101 -- bcrypt hash blacklist for retired credentials
-	retiredBootstrapCredentialHash = "$2a$10$nrRQZwLhttHjt9ePYU/8dOK3jrqxPCMS6.p2i3SDaUVtek5DR.moe" // #nosec G101
+	retiredBootstrapCredentialHash = "$2a$10$MrX03IY.gdR12cHu7G/ODOKOg8PindR.1lNBEDlVy5FROp/TjZLvy" // #nosec G101
 )
 
 // bootstrapInput chứa các trường dữ liệu đầu vào bắt buộc để khởi tạo tài khoản quản trị viên đầu tiên.

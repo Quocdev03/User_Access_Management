@@ -16,12 +16,12 @@ func TestRejectKnownBootstrapPassword(t *testing.T) {
 	}{
 		{
 			name:     "retired password",
-			password: "AdminPassword123!@#",
+			password: "RetiredDefaultPassword123!@#",
 			wantErr:  true,
 		},
 		{
 			name:     "allowed password",
-			password: "TestOnly@Secure123",
+			password: "AdminPassword123!@#",
 			wantErr:  false,
 		},
 	}
