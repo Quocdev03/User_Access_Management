@@ -122,7 +122,8 @@ func (s *LocalStore) Open(ctx context.Context, key string) (*os.File, error) {
 	if err := ctx.Err(); err != nil {
 		return nil, err
 	}
-	file, err := os.Open(target)
+	cleanTarget := filepath.Clean(target)
+	file, err := os.Open(cleanTarget) // #nosec G304 -- target is verified within root and avatars/ prefix above
 	if err != nil {
 		return nil, fmt.Errorf("open local blob: %w", err)
 	}

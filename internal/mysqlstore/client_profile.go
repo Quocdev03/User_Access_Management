@@ -92,11 +92,11 @@ func (s *ClientProfileStore) Observe(ctx context.Context, profile *ClientProfile
 	if err != nil {
 		return fmt.Errorf("create observed client profile: %w", err)
 	}
-	id, err := result.LastInsertId()
+	id, err := parsePositiveInsertID(result, "create observed client profile")
 	if err != nil {
-		return fmt.Errorf("read observed client profile id: %w", err)
+		return err
 	}
-	profile.ID = uint64(id)
+	profile.ID = id
 	return nil
 }
 

@@ -57,11 +57,11 @@ func (s *SessionStore) Create(ctx context.Context, session *Session) error {
 	if err != nil {
 		return fmt.Errorf("create session: %w", err)
 	}
-	id, err := result.LastInsertId()
+	id, err := parsePositiveInsertID(result, "create session")
 	if err != nil {
-		return fmt.Errorf("read created session id: %w", err)
+		return err
 	}
-	session.ID = uint64(id)
+	session.ID = id
 	return nil
 }
 

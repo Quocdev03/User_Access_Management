@@ -82,11 +82,11 @@ func (s *VerificationChallengeStore) Create(
 	if err != nil {
 		return fmt.Errorf("create verification challenge: %w", err)
 	}
-	id, err := result.LastInsertId()
+	id, err := parsePositiveInsertID(result, "create verification challenge")
 	if err != nil {
-		return fmt.Errorf("read verification challenge id: %w", err)
+		return err
 	}
-	challenge.ID = uint64(id)
+	challenge.ID = id
 	return nil
 }
 

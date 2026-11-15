@@ -402,11 +402,7 @@ func (s *AccessStore) CreateRole(
 	if err != nil {
 		return 0, mapAccessWriteError(err)
 	}
-	id, err := result.LastInsertId()
-	if err != nil {
-		return 0, fmt.Errorf("read created role id: %w", err)
-	}
-	return uint64(id), nil
+	return parsePositiveInsertID(result, "create role")
 }
 
 // UpdateRole cập nhật role tại MySQL adapter và giữ mapping persistence khỏi domain.

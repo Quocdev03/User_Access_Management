@@ -2,6 +2,8 @@ package mysqlstore
 
 import (
 	"context"
+	"database/sql"
+	"fmt"
 
 	"github.com/jmoiron/sqlx"
 	"github.com/quocdev03/user-access-management/pkg/database"
@@ -28,4 +30,16 @@ func executor(ctx context.Context, db *sqlx.DB) Executor {
 // inTransaction báo context hiện đã thuộc một transaction để chặn nested transaction.
 func inTransaction(ctx context.Context) bool {
 	return database.InTransaction(ctx)
+}
+
+// parsePositiveInsertID kiểm tra an toàn kết quả LastInsertId để tránh tràn số integer khi ép kiểu sang uint64 (G115).
+func parsePositiveInsertID(res sql.Result, action string) (uint64, error) {
+	id, err := res.LastInsertId()
+	if err != nil {
+		return 0, fmt.Errorf("%s: read last insert id: %w", action, err)
+	}
+	if id <= 0 {
+		return 0, fmt.Errorf("%s: invalid non-positive insert id %d", action, id)
+	}
+	return uint64(id), nil
 }

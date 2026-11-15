@@ -5,6 +5,7 @@ import (
 	"crypto/rand"
 	"encoding/base64"
 	"fmt"
+	"math"
 	"strconv"
 	"time"
 
@@ -208,9 +209,15 @@ func (s *MFAChallengeStore) Claim(
 	if err != nil {
 		return MFAChallengeClaim{}, false, err
 	}
+	if attempts > math.MaxInt {
+		return MFAChallengeClaim{}, false, fmt.Errorf("attempts exceeds maximum integer bound: %d", attempts)
+	}
 	remainingMilliseconds, err := parseRedisUint(result[4], "remaining TTL")
 	if err != nil {
 		return MFAChallengeClaim{}, false, err
+	}
+	if remainingMilliseconds > math.MaxInt64 {
+		return MFAChallengeClaim{}, false, fmt.Errorf("remaining TTL exceeds maximum int64 bound: %d", remainingMilliseconds)
 	}
 	return MFAChallengeClaim{
 		Challenge: MFAChallenge{

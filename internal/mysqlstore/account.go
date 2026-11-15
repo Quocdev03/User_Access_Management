@@ -121,11 +121,11 @@ func (s *AccountStore) CreateRegistration(
 		}
 		return fmt.Errorf("create registration account: %w", err)
 	}
-	id, err := result.LastInsertId()
+	id, err := parsePositiveInsertID(result, "create registration account")
 	if err != nil {
-		return fmt.Errorf("read registration account id: %w", err)
+		return err
 	}
-	account.ID = uint64(id)
+	account.ID = id
 	return nil
 }
 

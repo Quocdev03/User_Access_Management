@@ -199,7 +199,11 @@ func validateTOTPCode(
 			return 0, false, fmt.Errorf("validate TOTP code: %w", err)
 		}
 		if valid {
-			return uint64(candidateTime.Unix() / totpPeriodSeconds), true, nil
+			step := candidateTime.Unix() / totpPeriodSeconds
+			if step < 0 {
+				return 0, false, fmt.Errorf("invalid negative TOTP time step: %d", step)
+			}
+			return uint64(step), true, nil
 		}
 	}
 	return 0, false, nil

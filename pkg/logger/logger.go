@@ -2,6 +2,8 @@
 package logger
 
 import (
+	"strings"
+
 	"go.uber.org/zap"
 	"go.uber.org/zap/zapcore"
 )
@@ -19,4 +21,10 @@ func New(env string) (*zap.Logger, error) {
 	}
 
 	return config.Build(zap.AddStacktrace(zapcore.ErrorLevel))
+}
+
+// SanitizeLogValue loại bỏ ký tự điều khiển xuống dòng (\r, \n) để ngăn chặn Log Injection (CWE-117).
+func SanitizeLogValue(val string) string {
+	val = strings.ReplaceAll(val, "\r", "")
+	return strings.ReplaceAll(val, "\n", "")
 }

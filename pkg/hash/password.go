@@ -24,7 +24,9 @@ const (
 )
 
 // DummyPasswordHash là bcrypt hash hợp lệ dùng để cân bằng timing khi tài khoản không tồn tại.
-const DummyPasswordHash = "$2a$10$IPzDZM5LbI2XJynYGwn0tepKOFLr0HNzTD6PCPRUzeu3yWfDZGk.G"
+//
+//nolint:gosec // #nosec G101 -- dummy bcrypt hash used to equalize timing when account is not found
+const DummyPasswordHash = "$2a$10$IPzDZM5LbI2XJynYGwn0tepKOFLr0HNzTD6PCPRUzeu3yWfDZGk.G" // #nosec G101
 
 // SHA256 trả digest hex cho dữ liệu không cần password-hardening.
 func SHA256(data string) string {

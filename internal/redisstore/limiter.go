@@ -138,10 +138,17 @@ func (l *Limiter) Allow(
 		return LimitRejected, 0, fmt.Errorf("unexpected rate limiter retry value %T", result[1])
 	}
 
-	switch LimitDecision(state) {
-	case LimitAllowed, LimitRejected, LimitBanned:
-		return LimitDecision(state), time.Duration(retryMilliseconds) * time.Millisecond, nil
+	var decision LimitDecision
+	switch state {
+	case int64(LimitAllowed):
+		decision = LimitAllowed
+	case int64(LimitRejected):
+		decision = LimitRejected
+	case int64(LimitBanned):
+		decision = LimitBanned
 	default:
 		return LimitRejected, 0, fmt.Errorf("unexpected rate limiter state %d", state)
 	}
+
+	return decision, time.Duration(retryMilliseconds) * time.Millisecond, nil
 }

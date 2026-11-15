@@ -3,36 +3,34 @@ package main
 import (
 	"strings"
 	"testing"
-
-	"github.com/quocdev03/user-access-management/pkg/hash"
 )
 
 // File này kiểm chứng hành vi main và các trường hợp lỗi liên quan.
 
-// TestRejectKnownBootstrapPasswordHash kiểm chứng kịch bản RejectKnownBootstrapPasswordHash.
-func TestRejectKnownBootstrapPasswordHash(t *testing.T) {
+// TestRejectKnownBootstrapPassword kiểm chứng kịch bản rejectKnownBootstrapPassword.
+func TestRejectKnownBootstrapPassword(t *testing.T) {
 	tests := []struct {
-		name        string
-		fingerprint string
-		wantErr     bool
+		name     string
+		password string
+		wantErr  bool
 	}{
 		{
-			name:        "retired fingerprint",
-			fingerprint: knownBootstrapPasswordSHA256,
-			wantErr:     true,
+			name:     "retired password",
+			password: "AdminPassword123!@#",
+			wantErr:  true,
 		},
 		{
-			name:        "different fingerprint",
-			fingerprint: hash.SHA256("TestOnly@Secure123"),
-			wantErr:     false,
+			name:     "allowed password",
+			password: "TestOnly@Secure123",
+			wantErr:  false,
 		},
 	}
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			err := rejectKnownBootstrapPasswordHash(tt.fingerprint)
+			err := rejectKnownBootstrapPassword(tt.password)
 			if (err != nil) != tt.wantErr {
-				t.Fatalf("rejectKnownBootstrapPasswordHash() error = %v, wantErr %v", err, tt.wantErr)
+				t.Fatalf("rejectKnownBootstrapPassword() error = %v, wantErr %v", err, tt.wantErr)
 			}
 		})
 	}
@@ -84,7 +82,7 @@ func TestParseAndValidateBootstrapInput(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			input, err := parseBootstrapInput(tt.args, func(key string) string {
-				if key != bootstrapPasswordEnv {
+				if key != bootstrapPasswordEnvName {
 					t.Fatalf("unexpected environment key %q", key)
 				}
 				return tt.password

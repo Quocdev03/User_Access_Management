@@ -53,11 +53,7 @@ func (s *PasswordResetStore) Create(
 	if err != nil {
 		return 0, fmt.Errorf("create password reset token: %w", err)
 	}
-	id, err := result.LastInsertId()
-	if err != nil {
-		return 0, fmt.Errorf("read password reset token id: %w", err)
-	}
-	return uint64(id), nil
+	return parsePositiveInsertID(result, "create password reset token")
 }
 
 // FindByTokenHash truy vấn theo token băm tại MySQL adapter và giữ mapping persistence khỏi domain.

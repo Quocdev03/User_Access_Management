@@ -12,6 +12,7 @@ import (
 	"github.com/quocdev03/user-access-management/internal/redisstore"
 	"github.com/quocdev03/user-access-management/pkg/apperror"
 	"github.com/quocdev03/user-access-management/pkg/jwt"
+	pkglogger "github.com/quocdev03/user-access-management/pkg/logger"
 	"github.com/quocdev03/user-access-management/pkg/response"
 	"go.uber.org/zap"
 )
@@ -65,7 +66,7 @@ func AuthMiddleware(
 			logger.Error(
 				"Lỗi kết nối Redis khi check blacklist, từ chối request",
 				zap.Error(err),
-				zap.String("jti", claims.ID),
+				zap.String("jti", pkglogger.SanitizeLogValue(claims.ID)),
 			)
 			response.Error(c, serviceUnavailableError())
 			c.Abort()

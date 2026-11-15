@@ -18,13 +18,19 @@ import (
 	"github.com/quocdev03/user-access-management/internal/mysqlstore"
 	"github.com/quocdev03/user-access-management/pkg/database"
 	"github.com/quocdev03/user-access-management/pkg/hash"
+	"golang.org/x/crypto/bcrypt"
 )
 
 // File này kiểm tra input vận hành và tạo quản trị viên đầu tiên trong transaction.
 
 const (
-	bootstrapPasswordEnv         = "UAM_BOOTSTRAP_ADMIN_PASSWORD"
-	knownBootstrapPasswordSHA256 = "ba8bcfb1dc44652223d3ed64fe68e18ba16ee7d43f1fda5668d0d03307e8b0fa"
+	// bootstrapPasswordEnvName là tên biến môi trường chứa password khởi tạo admin.
+	//nolint:gosec // #nosec G101 -- environment variable key name only, not credentials
+	bootstrapPasswordEnvName = "UAM_BOOTSTRAP_ADMIN_PASSWORD" // #nosec G101
+
+	// retiredBootstrapCredentialHash là bcrypt hash của credential bootstrap mặc định cũ nhằm từ chối tái sử dụng.
+	//nolint:gosec // #nosec G101 -- bcrypt hash blacklist for retired credentials
+	retiredBootstrapCredentialHash = "$2a$10$nrRQZwLhttHjt9ePYU/8dOK3jrqxPCMS6.p2i3SDaUVtek5DR.moe" // #nosec G101
 )
 
 // bootstrapInput chứa các trường dữ liệu đầu vào bắt buộc để khởi tạo tài khoản quản trị viên đầu tiên.
@@ -61,14 +67,14 @@ func parseBootstrapInput(args []string, getenv func(string) string) (bootstrapIn
 	input.FullName = strings.TrimSpace(input.FullName)
 	input.Phone = strings.TrimSpace(input.Phone)
 	input.DateOfBirth = strings.TrimSpace(input.DateOfBirth)
-	input.Password = getenv(bootstrapPasswordEnv)
+	input.Password = getenv(bootstrapPasswordEnvName)
 
 	return input, nil
 }
 
-// rejectKnownBootstrapPasswordHash chặn password trùng credential bootstrap từng bị phát hành.
-func rejectKnownBootstrapPasswordHash(passwordHash string) error {
-	if passwordHash == knownBootstrapPasswordSHA256 {
+// rejectKnownBootstrapPassword chặn password trùng credential bootstrap mặc định từng bị phát hành.
+func rejectKnownBootstrapPassword(rawPassword string) error {
+	if bcrypt.CompareHashAndPassword([]byte(retiredBootstrapCredentialHash), []byte(rawPassword)) == nil {
 		return errors.New("bootstrap password is a retired known credential")
 	}
 	return nil
@@ -79,7 +85,7 @@ func validateBootstrapInput(input bootstrapInput) error {
 	if err := validator.New().Struct(input); err != nil {
 		return fmt.Errorf("validate bootstrap input: %w", err)
 	}
-	if err := rejectKnownBootstrapPasswordHash(hash.SHA256(input.Password)); err != nil {
+	if err := rejectKnownBootstrapPassword(input.Password); err != nil {
 		return err
 	}
 	if err := hash.ValidateNewPassword(input.Password); err != nil {

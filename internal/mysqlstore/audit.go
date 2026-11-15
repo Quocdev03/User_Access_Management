@@ -57,9 +57,9 @@ func (s *AuditStore) Create(ctx context.Context, log *AuditLog) error {
 		return fmt.Errorf("create audit log: %w", err)
 	}
 
-	id, err := res.LastInsertId()
+	id, err := parsePositiveInsertID(res, "create audit log")
 	if err == nil {
-		log.ID = uint64(id)
+		log.ID = id
 	}
 
 	return nil

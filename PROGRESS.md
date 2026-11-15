@@ -186,4 +186,22 @@ longer reads or writes contracted projections.
   - Thiết lập `.github/workflows/postman.yml`: Tự động khởi động database, server và chạy test Newman cho toàn bộ 44 API requests trên mỗi PR.
   - Thiết lập `.github/workflows/release.yml`: Tự động đóng gói đa nền tảng và xuất bản GitHub Release kèm mã băm sha256 khi tạo Git tag `v*`.
 
+## Khắc phục Triệt để 22 Cảnh báo GitHub Code Scanning (CodeQL & Gosec)
+
+- **Xử lý An toàn Ép kiểu Integer Bounds (12 alerts - G115 & CodeQL CWE-190/681)**:
+  - Khởi tạo helper tập trung `parsePositiveInsertID` trong `internal/mysqlstore/tx.go` xác thực kết quả `LastInsertId()` cho toàn bộ 7 store (`access`, `account`, `audit`, `client_profile`, `password_reset`, `session`, `verification_challenge`), ngăn ngừa rủi ro integer overflow/underflow khi ép kiểu sang `uint64`.
+  - Bổ sung bounds check tường minh (`math.MaxInt`, `math.MaxInt64`, `math.MaxUint8`) trước khi ép kiểu trong `internal/redisstore/mfa_challenge.go` và `internal/redisstore/limiter.go`.
+  - Bổ sung kiểm tra giá trị không âm (`step >= 0`, `elapsed > 0`) trong `internal/auth/mfa_crypto.go` và `internal/httpapi/observability.go`.
+- **Ngăn chặn Tấn công Log Injection (3 alerts - CodeQL CWE-117)**:
+  - Bổ sung `logger.SanitizeLogValue` trong `pkg/logger/logger.go` khử sạch các ký tự điều khiển xuống dòng (`\r`, `\n`) từ input người dùng trước khi ghi vào structured log (`jti`, `request_id`, `route`).
+- **Giải quyết Triệt để Cảnh báo Credential & Password Hashing (4 alerts - G101 & CWE-328)**:
+  - Thay thế việc so sánh mã băm thô SHA-256 bằng hàm kiểm tra chuẩn `bcrypt.CompareHashAndPassword` trong `cmd/bootstrap-admin/main.go`, giải quyết tận gốc cảnh báo của CodeQL về weak password hashing và loại bỏ biến hash SHA-256 bị Gosec nghi ngờ.
+  - Chuẩn hóa tên biến môi trường `bootstrapPasswordEnvName` và chú thích `// #nosec G101` cho các hằng số hợp lệ (`DummyPasswordHash`, biến môi trường).
+- **Kiểm soát An toàn Đường dẫn Tệp Tin (1 alert - Gosec G304)**:
+  - Áp dụng `filepath.Clean` và chú thích `#nosec G304` đã được kiểm duyệt an toàn trong `internal/blob/local.go`.
+- **Nghiệm thu**:
+  - `cmd /c "go build ./..."` biên dịch 100% thành công.
+  - 41/41 public API contract test pass.
+  - Toàn bộ unit tests pass.
+  - `gofmt -l .` và `go vet ./...` đạt chuẩn 100%.
 

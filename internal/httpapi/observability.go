@@ -12,6 +12,7 @@ import (
 	"github.com/google/uuid"
 	"github.com/jmoiron/sqlx"
 	"github.com/quocdev03/user-access-management/pkg/apperror"
+	pkglogger "github.com/quocdev03/user-access-management/pkg/logger"
 	"github.com/quocdev03/user-access-management/pkg/response"
 	"github.com/redis/go-redis/v9"
 	"go.uber.org/zap"
@@ -76,7 +77,9 @@ func RequestObservability(logger *zap.Logger, metrics *HTTPMetrics) gin.HandlerF
 			metrics.responses5xx.Add(1)
 		}
 		elapsed := time.Since(start)
-		metrics.durationNanos.Add(uint64(elapsed))
+		if elapsed > 0 {
+			metrics.durationNanos.Add(uint64(elapsed))
+		}
 
 		route := c.FullPath()
 		if route == "" {
@@ -88,9 +91,9 @@ func RequestObservability(logger *zap.Logger, metrics *HTTPMetrics) gin.HandlerF
 		}
 		logger.Info(
 			"http request",
-			zap.String("request_id", requestID),
-			zap.String("method", c.Request.Method),
-			zap.String("route", route),
+			zap.String("request_id", pkglogger.SanitizeLogValue(requestID)),
+			zap.String("method", pkglogger.SanitizeLogValue(c.Request.Method)),
+			zap.String("route", pkglogger.SanitizeLogValue(route)),
 			zap.Int("status", status),
 			zap.Duration("latency", elapsed),
 			zap.String("client_class", clientClass),
